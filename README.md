@@ -4,10 +4,7 @@ Three.js 打造的 3D 中国象棋，棋子为拟人化战阵设计：重甲拄�
 
 ## 演示视频
 
-
-
-https://github.com/user-attachments/assets/d883fe53-15c0-4143-9ce6-374843aa30d4
-
+https://github.com/user-attachments/assets/8aae6350-6348-47c0-bc0f-48be18bcc7e8
 
 ## 运行
 
