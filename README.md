@@ -2,6 +2,9 @@
 
 Three.js 打造的 3D 中国象棋，棋子为拟人化战阵设计：重甲拄剑的帅/將、抱拳文士仕/士、象头持杖的相/象、马头持枪的馬、轮甲执戟的車、肩扛火炮的炮/砲、斗笠枪盾的兵/卒。
 
+<img width="924" height="570" alt="image" src="https://github.com/user-attachments/assets/d0e616e7-5747-4cec-acb8-79e9632a030a" />
+
+
 ## 演示视频
 
 https://github.com/user-attachments/assets/8aae6350-6348-47c0-bc0f-48be18bcc7e8
