@@ -19,6 +19,8 @@ const SIDE = {
 const MATERIAL_CACHE = new Map();
 const GEOMETRY_CACHE = new Map();
 const GLYPH_TEXTURE_CACHE = new Map();
+const GLYPH_MATERIAL_CACHE = new Map();
+const MERGED_FIGURE_CACHE = new Map();
 const HIT_MATERIAL = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false });
 
 function std(color, rough = 0.55, metal = 0.3) {
@@ -35,6 +37,83 @@ function std(color, rough = 0.55, metal = 0.3) {
 function geometry(key, factory) {
   if (!GEOMETRY_CACHE.has(key)) GEOMETRY_CACHE.set(key, factory());
   return GEOMETRY_CACHE.get(key);
+}
+
+function mergeGeometryList(source) {
+  const geometries = source.map(g => g.index ? g.toNonIndexed() : g.clone());
+  const result = new THREE.BufferGeometry();
+  for (const name of ['position', 'normal', 'uv']) {
+    const attributes = geometries.map(g => g.getAttribute(name));
+    if (attributes.some(attr => !attr)) continue;
+    const first = attributes[0];
+    const totalLength = attributes.reduce((sum, attr) => sum + attr.array.length, 0);
+    const merged = new first.array.constructor(totalLength);
+    let offset = 0;
+    for (const attr of attributes) {
+      merged.set(attr.array, offset);
+      offset += attr.array.length;
+    }
+    result.setAttribute(name, new THREE.BufferAttribute(merged, first.itemSize, first.normalized));
+  }
+  result.computeBoundingBox();
+  result.computeBoundingSphere();
+  for (const g of geometries) g.dispose();
+  return result;
+}
+
+// 将不参与攻击动作的零件按材质合并，保留武器层级供 main.js 单独驱动。
+function batchStaticFigure(root, type, color, preservedRoots) {
+  const cacheKey = `${color}:${type}`;
+  const preserved = new Set(preservedRoots.filter(Boolean));
+  const isPreserved = obj => {
+    for (let node = obj; node && node !== root; node = node.parent) {
+      if (preserved.has(node)) return true;
+    }
+    return false;
+  };
+
+  const removable = [];
+  root.traverse(obj => {
+    if (obj.isMesh && !isPreserved(obj) && !Array.isArray(obj.material)) removable.push(obj);
+  });
+
+  if (!MERGED_FIGURE_CACHE.has(cacheKey)) {
+    root.updateMatrixWorld(true);
+    const rootInverse = root.matrixWorld.clone().invert();
+    const buckets = new Map();
+    for (const mesh of removable) {
+      let bucket = buckets.get(mesh.material);
+      if (!bucket) {
+        bucket = { material: mesh.material, geometries: [], castShadow: false, receiveShadow: false };
+        buckets.set(mesh.material, bucket);
+      }
+      const relative = new THREE.Matrix4().multiplyMatrices(rootInverse, mesh.matrixWorld);
+      const transformed = mesh.geometry.clone();
+      transformed.applyMatrix4(relative);
+      bucket.geometries.push(transformed);
+      bucket.castShadow ||= mesh.castShadow;
+      bucket.receiveShadow ||= mesh.receiveShadow;
+    }
+    const merged = [];
+    for (const bucket of buckets.values()) {
+      merged.push({
+        geometry: mergeGeometryList(bucket.geometries),
+        material: bucket.material,
+        castShadow: bucket.castShadow,
+        receiveShadow: bucket.receiveShadow,
+      });
+      for (const g of bucket.geometries) g.dispose();
+    }
+    MERGED_FIGURE_CACHE.set(cacheKey, merged);
+  }
+
+  for (const mesh of removable) mesh.removeFromParent();
+  for (const entry of MERGED_FIGURE_CACHE.get(cacheKey)) {
+    const mesh = new THREE.Mesh(entry.geometry, entry.material);
+    mesh.castShadow = entry.castShadow;
+    mesh.receiveShadow = entry.receiveShadow;
+    root.add(mesh);
+  }
 }
 
 function part(geo, material, x = 0, y = 0, z = 0, rot = {}) {
@@ -98,26 +177,38 @@ function glyphTexture(text, bg, ink, ring) {
   return tex;
 }
 
-function pedestal(color, type) {
-  const s = SIDE[color];
-  const g = new THREE.Group();
-  const sideMt = std(s.base, 0.45, 0.5);
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.12, 0.34, 28), sideMt);
-  body.position.y = 0.17;
-  body.castShadow = body.receiveShadow = true;
-  g.add(body);
-  // 顶面汉字贴片: rotation.z = π 使字形正对持子方
-  const face = new THREE.Mesh(
-    new THREE.CircleGeometry(0.97, 28),
-    new THREE.MeshStandardMaterial({
+function glyphMaterial(color, type) {
+  const key = `${color}:${type}`;
+  if (!GLYPH_MATERIAL_CACHE.has(key)) {
+    GLYPH_MATERIAL_CACHE.set(key, new THREE.MeshStandardMaterial({
       map: glyphTexture(
         GLYPH[color][type],
         color === 'red' ? '#3a0f0c' : '#141e2a',
         color === 'red' ? '#ffd9a0' : '#cfe0f5',
         '#e8c070'
       ),
-      roughness: 0.55, metalness: 0.1,
-    })
+      roughness: 0.55,
+      metalness: 0.1,
+    }));
+  }
+  return GLYPH_MATERIAL_CACHE.get(key);
+}
+
+function pedestal(color, type) {
+  const s = SIDE[color];
+  const g = new THREE.Group();
+  const sideMt = std(s.base, 0.45, 0.5);
+  const body = new THREE.Mesh(
+    geometry('pedestal:body', () => new THREE.CylinderGeometry(1.0, 1.12, 0.34, 28)),
+    sideMt
+  );
+  body.position.y = 0.17;
+  body.castShadow = body.receiveShadow = true;
+  g.add(body);
+  // 顶面汉字贴片: rotation.z = π 使字形正对持子方
+  const face = new THREE.Mesh(
+    geometry('pedestal:face', () => new THREE.CircleGeometry(0.97, 28)),
+    glyphMaterial(color, type)
   );
   face.rotation.x = -Math.PI / 2;
   face.rotation.z = Math.PI;
@@ -526,6 +617,8 @@ export function createPieceMesh(type, color) {
   const root = new THREE.Group();
   root.add(pedestal(color, type));
   const figure = BUILDERS[type](s);
+  const rig = figure.userData.rig || {};
+  batchStaticFigure(figure, type, color, [rig.weapon]);
   figure.position.y = 0.34;
   root.add(figure);
   const hitArea = new THREE.Mesh(
@@ -536,7 +629,7 @@ export function createPieceMesh(type, color) {
   hitArea.userData.isPieceHitArea = true;
   root.add(hitArea);
   root.userData.figure = figure;
-  root.userData.rig = figure.userData.rig || {};
+  root.userData.rig = rig;
   root.userData.hitArea = hitArea;
   return root;
 }

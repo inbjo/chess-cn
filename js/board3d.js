@@ -209,6 +209,10 @@ export function createMarkers() {
   const capMt = new THREE.MeshBasicMaterial({ color: 0xff5a4a, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide });
   const selMt = new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide });
   const lastMt = new THREE.MeshBasicMaterial({ color: 0x8fb8ff, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide });
+  const moveGeo = new THREE.CircleGeometry(0.3, 24);
+  const capGeo = new THREE.RingGeometry(1.2, 1.38, 36);
+  const selectGeo = new THREE.RingGeometry(1.24, 1.38, 36);
+  const lastGeo = new THREE.RingGeometry(1.18, 1.3, 36);
   return {
     group,
     clear() { while (group.children.length) group.remove(group.children[0]); },
@@ -218,9 +222,9 @@ export function createMarkers() {
         const isCap = !!pieceAtFn(pieces, m.row, m.col);
         let mesh;
         if (isCap) {
-          mesh = new THREE.Mesh(new THREE.RingGeometry(1.2, 1.38, 36), capMt);
+          mesh = new THREE.Mesh(capGeo, capMt);
         } else {
-          mesh = new THREE.Mesh(new THREE.CircleGeometry(0.3, 24), moveMt);
+          mesh = new THREE.Mesh(moveGeo, moveMt);
         }
         mesh.rotation.x = -Math.PI / 2;
         mesh.position.set(x, TOP_Y + 0.02, z);
@@ -230,7 +234,7 @@ export function createMarkers() {
     },
     selectRing(row, col) {
       const { x, z } = squareToWorld(row, col);
-      const ring = new THREE.Mesh(new THREE.RingGeometry(1.24, 1.38, 36), selMt);
+      const ring = new THREE.Mesh(selectGeo, selMt);
       ring.rotation.x = -Math.PI / 2;
       ring.position.set(x, TOP_Y + 0.02, z);
       ring.userData.isSelectRing = true;
@@ -239,7 +243,7 @@ export function createMarkers() {
     lastMoveMarks(from, to) {
       for (const sq of [from, to]) {
         const { x, z } = squareToWorld(sq.row, sq.col);
-        const ring = new THREE.Mesh(new THREE.RingGeometry(1.18, 1.3, 36), lastMt);
+        const ring = new THREE.Mesh(lastGeo, lastMt);
         ring.rotation.x = -Math.PI / 2;
         ring.position.set(x, TOP_Y + 0.015, z);
         ring.userData.isLastMark = true;

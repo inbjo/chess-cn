@@ -20,6 +20,8 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.autoUpdate = false;
+renderer.shadowMap.needsUpdate = true;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.34;
 
@@ -153,6 +155,12 @@ function buildAllPieces() {
     meshById.set(p.id, mesh);
     pieceHitAreas.push(mesh.userData.hitArea);
   }
+  renderer.shadowMap.needsUpdate = true;
+}
+
+function disposeOwnedPieceMaterials(mesh) {
+  for (const material of mesh.userData.ownedMaterials || []) material.dispose();
+  mesh.userData.ownedMaterials = [];
 }
 
 function resetGame() {
@@ -164,6 +172,7 @@ function resetGame() {
   lastAttackType = null;
   tweens.length = 0;
   fx.clear();
+  for (const mesh of meshById.values()) disposeOwnedPieceMaterials(mesh);
   while (piecesGroup.children.length) piecesGroup.remove(piecesGroup.children[0]);
   meshById.clear();
   pieceHitAreas.length = 0;
@@ -282,12 +291,17 @@ function setOpacity(mesh, v) {
 }
 function makeFadable(mesh) {
   if (mesh.userData.hasFadableMaterials) return;
+  const ownedMaterials = [];
   mesh.traverse(o => {
     if (o.isMesh) {
       o.material = Array.isArray(o.material) ? o.material.map(m => m.clone()) : o.material.clone();
-      (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { m.transparent = true; });
+      (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => {
+        m.transparent = true;
+        ownedMaterials.push(m);
+      });
     }
   });
+  mesh.userData.ownedMaterials = ownedMaterials;
   mesh.userData.hasFadableMaterials = true;
 }
 // 被吃棋子击飞: 抛起 + 翻滚 + 淡出
@@ -599,16 +613,27 @@ renderer.domElement.addEventListener('pointerup', ev => {
   if (selected) { selected = null; markers.clear(); hint.textContent = '点击己方棋子查看可走位置'; }
 });
 
+let hoverFrame = 0;
+let hoverPoint = null;
 renderer.domElement.addEventListener('pointermove', ev => {
-  if (gameOver) return;
-  const { marker, pieceRoot } = castAt(ev);
-  let hover = !!marker;
-  if (!hover && pieceRoot) {
-    const piece = state.pieces.find(p => p.id === pieceRoot.userData.pieceId);
-    hover = piece && (piece.color === state.turn ||
-      (selected && selectedMoves.some(m => m.row === piece.row && m.col === piece.col)));
-  }
-  renderer.domElement.style.cursor = hover ? 'pointer' : 'grab';
+  hoverPoint = { clientX: ev.clientX, clientY: ev.clientY };
+  if (hoverFrame) return;
+  hoverFrame = requestAnimationFrame(() => {
+    hoverFrame = 0;
+    if (gameOver || !hoverPoint) return;
+    const { marker, pieceRoot } = castAt(hoverPoint);
+    let hover = !!marker;
+    if (!hover && pieceRoot) {
+      const piece = state.pieces.find(p => p.id === pieceRoot.userData.pieceId);
+      hover = piece && (piece.color === state.turn ||
+        (selected && selectedMoves.some(m => m.row === piece.row && m.col === piece.col)));
+    }
+    renderer.domElement.style.cursor = hover ? 'pointer' : 'grab';
+  });
+});
+renderer.domElement.addEventListener('pointerleave', () => {
+  hoverPoint = null;
+  renderer.domElement.style.cursor = 'grab';
 });
 
 // ---------- 按钮 ----------
@@ -658,11 +683,14 @@ document.getElementById('btnCam').addEventListener('click', () => {
 const clock = new THREE.Clock();
 function easeInOut(p) { return p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2; }
 let simulationTime = 0;
+let shadowUpdateFrame = 0;
 
-function updateScene(dt) {
+function updateScene(dt, renderFrame = true) {
   dt = Math.min(Math.max(dt, 0), 0.05);
   simulationTime += dt;
   const time = simulationTime;
+
+  const shadowsWereAnimating = tweens.length > 0;
 
   // 走子/击飞动画（支持 delay / fade / spin 组合）
   for (let i = tweens.length - 1; i >= 0; i--) {
@@ -737,13 +765,22 @@ function updateScene(dt) {
   pos.needsUpdate = true;
 
   controls.update();
-  renderer.render(scene, camera);
-  window.__markChessReady?.();
+  if (shadowsWereAnimating && (shadowUpdateFrame++ % 2 === 0 || tweens.length === 0)) {
+    renderer.shadowMap.needsUpdate = true;
+  }
+  if (renderFrame) {
+    renderer.render(scene, camera);
+    window.__markChessReady?.();
+  }
 }
 
 let deterministicFrameRendered = false;
-function animate() {
+let lastAnimationFrame = -Infinity;
+function animate(now = performance.now()) {
   requestAnimationFrame(animate);
+  const minFrameInterval = window.innerWidth < 760 ? 1000 / 30 : 1000 / 60;
+  if (!deterministicTestMode && now - lastAnimationFrame < minFrameInterval - 1) return;
+  lastAnimationFrame = now;
   const dt = clock.getDelta();
   if (!deterministicTestMode) updateScene(dt);
   else if (!deterministicFrameRendered) {
@@ -790,7 +827,7 @@ window.render_game_to_text = () => JSON.stringify({
 window.advanceTime = ms => {
   if (!deterministicTestMode || !Number.isFinite(ms) || ms <= 0) return;
   const steps = Math.min(600, Math.max(1, Math.round(ms / (1000 / 60))));
-  for (let i = 0; i < steps; i++) updateScene(1 / 60);
+  for (let i = 0; i < steps; i++) updateScene(1 / 60, i === steps - 1);
 };
 
 buildAllPieces();
