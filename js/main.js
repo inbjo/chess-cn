@@ -76,13 +76,68 @@ const fx = new FX(scene);
 const piecesGroup = new THREE.Group();
 scene.add(piecesGroup);
 
-let state = R.createInitialState();
+const pageParams = new URLSearchParams(location.search);
+const demoType = pageParams.get('demo');
+const deterministicTestMode = pageParams.get('test') === '1';
+const DEMO_TYPES = new Set(['general', 'advisor', 'elephant', 'horse', 'chariot', 'cannon', 'soldier']);
+
+function createAttackDemoState(type) {
+  const redGeneral = { id: 80, type: 'general', color: R.RED, row: 9, col: 4 };
+  const blackGeneral = { id: 90, type: 'general', color: R.BLACK, row: 0, col: 4 };
+  const fixtures = {
+    general: [
+      { id: 10, type: 'general', color: R.RED, row: 8, col: 4 },
+      { id: 20, type: 'cannon', color: R.BLACK, row: 7, col: 4 },
+      blackGeneral,
+      { id: 30, type: 'soldier', color: R.BLACK, row: 4, col: 4 },
+    ],
+    advisor: [
+      { id: 10, type: 'advisor', color: R.RED, row: 8, col: 4 },
+      { id: 20, type: 'soldier', color: R.BLACK, row: 7, col: 3 },
+      redGeneral, blackGeneral,
+      { id: 30, type: 'soldier', color: R.RED, row: 5, col: 4 },
+    ],
+    elephant: [
+      { id: 10, type: 'elephant', color: R.RED, row: 7, col: 2 },
+      { id: 20, type: 'soldier', color: R.BLACK, row: 5, col: 4 },
+      redGeneral, blackGeneral,
+    ],
+    horse: [
+      { id: 10, type: 'horse', color: R.RED, row: 6, col: 3 },
+      { id: 20, type: 'soldier', color: R.BLACK, row: 4, col: 4 },
+      redGeneral, blackGeneral,
+    ],
+    chariot: [
+      { id: 10, type: 'chariot', color: R.RED, row: 7, col: 3 },
+      { id: 20, type: 'soldier', color: R.BLACK, row: 3, col: 3 },
+      redGeneral, blackGeneral,
+      { id: 30, type: 'soldier', color: R.RED, row: 5, col: 4 },
+    ],
+    cannon: [
+      { id: 10, type: 'cannon', color: R.RED, row: 7, col: 3 },
+      { id: 20, type: 'soldier', color: R.BLACK, row: 2, col: 3 },
+      redGeneral, blackGeneral,
+      { id: 30, type: 'soldier', color: R.RED, row: 5, col: 3 },
+      { id: 31, type: 'soldier', color: R.RED, row: 5, col: 4 },
+    ],
+    soldier: [
+      { id: 10, type: 'soldier', color: R.RED, row: 5, col: 5 },
+      { id: 20, type: 'soldier', color: R.BLACK, row: 4, col: 5 },
+      redGeneral, blackGeneral,
+      { id: 30, type: 'soldier', color: R.RED, row: 5, col: 4 },
+    ],
+  };
+  return { pieces: fixtures[type].map(piece => ({ ...piece })), turn: R.RED, history: [], lastMove: null };
+}
+
+let state = DEMO_TYPES.has(demoType) ? createAttackDemoState(demoType) : R.createInitialState();
 let meshById = new Map();   // pieceId -> THREE.Group
 const pieceHitAreas = [];
 let selected = null;        // 当前选中棋子
 let selectedMoves = [];
 let gameOver = false;
 let actionPhase = 'idle';
+let lastAttackType = null;
 const tweens = [];
 
 function buildAllPieces() {
@@ -106,6 +161,7 @@ function resetGame() {
   selected = null;
   selectedMoves = [];
   actionPhase = 'idle';
+  lastAttackType = null;
   tweens.length = 0;
   fx.clear();
   while (piecesGroup.children.length) piecesGroup.remove(piecesGroup.children[0]);
@@ -188,6 +244,12 @@ const sndCapture = () => { tone(90, 0.3, 'sawtooth', 0.14); tone(180, 0.2, 'squa
 const sndFire = () => { tone(72, 0.22, 'square', 0.17); tone(210, 0.11, 'sawtooth', 0.1); tone(620, 0.05, 'triangle', 0.08); };
 const sndBoom = () => { tone(55, 0.62, 'sawtooth', 0.24); tone(38, 0.7, 'square', 0.13, 0.04); tone(420, 0.09, 'triangle', 0.1); };
 const sndHit = () => { tone(150, 0.14, 'square', 0.11); tone(310, 0.1, 'triangle', 0.09, 0.03); };
+const sndGeneral = () => { tone(118, 0.28, 'square', 0.1); tone(760, 0.16, 'triangle', 0.12, 0.05); };
+const sndAdvisor = () => { tone(740, 0.08, 'triangle', 0.08); tone(980, 0.09, 'triangle', 0.08, 0.1); };
+const sndElephant = () => { tone(72, 0.38, 'sine', 0.2); tone(128, 0.2, 'square', 0.08, 0.02); };
+const sndHorse = () => { tone(460, 0.08, 'sawtooth', 0.09); tone(105, 0.2, 'square', 0.1, 0.08); };
+const sndChariot = () => { tone(82, 0.3, 'sawtooth', 0.12); tone(190, 0.13, 'square', 0.1, 0.1); };
+const sndSoldier = () => { tone(260, 0.08, 'square', 0.08); tone(520, 0.07, 'triangle', 0.07, 0.08); };
 const sndCheck = () => { tone(520, 0.16, 'triangle', 0.14); tone(784, 0.22, 'triangle', 0.14, 0.14); };
 
 // ---------- 走子 / 攻击动画 ----------
@@ -205,28 +267,49 @@ function animateRotation(owner, node, axis, to, dur = 0.18, onDone = null, delay
     update: e => { node.rotation[axis] = THREE.MathUtils.lerp(from, to, e); },
   });
 }
+function animatePosition(owner, node, axis, to, dur = 0.18, onDone = null, delay = 0) {
+  if (!node) { schedule(delay + dur, onDone); return; }
+  const from = node.position[axis];
+  tweens.push({
+    mesh: owner, t: 0, dur, delay, onDone,
+    update: e => { node.position[axis] = THREE.MathUtils.lerp(from, to, e); },
+  });
+}
 function setOpacity(mesh, v) {
   mesh.traverse(o => {
     if (o.isMesh) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { m.opacity = v; });
   });
 }
 function makeFadable(mesh) {
+  if (mesh.userData.hasFadableMaterials) return;
   mesh.traverse(o => {
     if (o.isMesh) {
       o.material = Array.isArray(o.material) ? o.material.map(m => m.clone()) : o.material.clone();
       (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { m.transparent = true; });
     }
   });
+  mesh.userData.hasFadableMaterials = true;
 }
 // 被吃棋子击飞: 抛起 + 翻滚 + 淡出
 function flingPiece(mesh, dir, style, onDone = null) {
   makeFadable(mesh);
-  const up = style === 'blast' ? 3.4 : style === 'stomp' ? 0.9 : 1.7;
-  const away = style === 'blast' ? 3.6 : style === 'stomp' ? 1.2 : 2.3;
+  const profiles = {
+    blast:   { up: 3.4, away: 3.6, dur: 0.7, spin: true },
+    general: { up: 1.8, away: 2.45, dur: 0.72, spin: true },
+    advisor: { up: 1.15, away: 1.65, dur: 0.58, spin: true },
+    quake:   { up: 0.62, away: 0.95, dur: 0.66, spin: false },
+    pierce:  { up: 0.82, away: 2.55, dur: 0.58, spin: false },
+    ram:     { up: 1.45, away: 3.1, dur: 0.64, spin: true },
+    soldier: { up: 0.68, away: 1.5, dur: 0.5, spin: false },
+    stomp:   { up: 0.9, away: 1.2, dur: 0.7, spin: false },
+    slash:   { up: 1.7, away: 2.3, dur: 0.7, spin: true },
+  };
+  const profile = profiles[style] || profiles.slash;
+  const { up, away } = profile;
   const to = mesh.position.clone().addScaledVector(dir, away);
   tweens.push({
-    mesh, from: mesh.position.clone(), to, t: 0, dur: 0.7, arc: up,
-    fade: true, spin: style !== 'stomp',
+    mesh, from: mesh.position.clone(), to, t: 0, dur: profile.dur, arc: up,
+    fade: true, spin: profile.spin,
     onDone: () => {
       piecesGroup.remove(mesh);
       const hitIndex = pieceHitAreas.indexOf(mesh.userData.hitArea);
@@ -244,16 +327,31 @@ function restoreFacing(mesh) {
   mesh.rotation.y = mesh.userData.baseFacing;
 }
 
-const SLASH_COLOR = {
-  general: 0xffe9b0, advisor: 0xcfe4ff, elephant: 0xb8e8c8,
-  soldier: 0xffd090, horse: 0xfff0c0, chariot: 0xffe0b0, cannon: 0xffc060,
+const ATTACK_COLOR = {
+  red: {
+    general: 0xffd36a, advisor: 0xffd7b0, elephant: 0x91d0a5,
+    horse: 0xffefc2, chariot: 0xffa95c, cannon: 0xffc060, soldier: 0xff6650,
+  },
+  black: {
+    general: 0xb9d9ff, advisor: 0xcfe8ff, elephant: 0x8fcbb8,
+    horse: 0xbddcff, chariot: 0x85b7e8, cannon: 0x9fc8ff, soldier: 0x78aee8,
+  },
 };
+
+function setAttackPhase(type, stage) {
+  lastAttackType = type;
+  actionPhase = `${type}-${stage}`;
+}
 function arcFor(type) {
   return type === 'horse' ? 1.7 : type === 'elephant' ? 0.45 : type === 'soldier' ? 0.85 : 0.7;
 }
 
 function doMove(piece, to) {
   const mesh = meshById.get(piece.id);
+  if (!mesh) {
+    console.error(`Missing visual mesh for piece ${piece.id}`);
+    return;
+  }
   const captured = R.applyMove(state, piece, to);
   selected = null;
   selectedMoves = [];
@@ -262,7 +360,10 @@ function doMove(piece, to) {
   const dst = squareToWorld(to.row, to.col);
   const dstV = new THREE.Vector3(dst.x, dst.y, dst.z);
 
+  let finished = false;
   const finish = () => {
+    if (finished) return;
+    finished = true;
     restoreFacing(mesh);
     actionPhase = 'idle';
     const status = R.gameStatus(state);
@@ -287,10 +388,17 @@ function doMove(piece, to) {
   }
 
   // 吃子: 按兵种演出攻击动画，再落位
-  actionPhase = piece.type === 'cannon' ? 'cannon-aim' : 'attacking';
+  setAttackPhase(piece.type, 'windup');
   const capMesh = meshById.get(captured.id);
+  if (!capMesh) {
+    console.error(`Missing visual mesh for captured piece ${captured.id}`);
+    mesh.position.copy(dstV);
+    finish();
+    return;
+  }
   const capPos = capMesh.position.clone();
   const dir = dstV.clone().sub(mesh.position).setY(0).normalize();
+  const effectColor = ATTACK_COLOR[piece.color][piece.type];
   faceDirection(mesh, dir);
 
   if (piece.type === 'cannon') {
@@ -311,53 +419,117 @@ function doMove(piece, to) {
           muzzle.copy(mesh.position).addScaledVector(dir, 1.15);
           muzzle.y += 1.65;
         }
-        actionPhase = 'cannon-flight';
+        setAttackPhase('cannon', 'flight');
         sndFire();
         fx.muzzleFlash(muzzle, dir);
         animateRotation(mesh, barrel, 'x', barrelRest, 0.18);
         fx.cannonShot(muzzle, target, () => {
-          actionPhase = 'cannon-impact';
+          setAttackPhase('cannon', 'impact');
           sndBoom();
           flingPiece(capMesh, dir, 'blast', () => {
-            actionPhase = 'cannon-advance';
+            setAttackPhase('cannon', 'advance');
             animateMove(mesh, dstV, 0.48, finish, 0.52);
           });
         });
       }, 0.16);
     });
   } else if (piece.type === 'chariot') {
-    // 车: 全速冲锋撞飞对手，直接冲入该格
+    // 车: 轮辙速度线 -> 贴地冲锋 -> 扇形撞击波
+    setAttackPhase('chariot', 'charge');
+    fx.chariotTrail(mesh, dir, effectColor, 0.62);
     animateMove(mesh, dstV, 0.1, () => {
-      sndCapture();
-      sndHit();
-      fx.impactDust(dstV);
+      setAttackPhase('chariot', 'impact');
+      sndChariot();
+      fx.chariotRam(dstV, dir, effectColor);
       flingPiece(capMesh, dir, 'ram', finish);
-    }, 0.3);
+    }, 0.34);
   } else if (piece.type === 'horse') {
-    // 马: 高跃践踏
-    animateMove(mesh, dstV, 1.9, () => {
-      sndCapture();
-      sndHit();
-      fx.slash(capPos, SLASH_COLOR.horse);
-      fx.impactDust(dstV);
-      flingPiece(capMesh, dir, 'stomp', finish);
+    // 马: 高跃压身 -> 空中挺槊 -> 枪芒贯穿 -> 踏入目标格
+    setAttackPhase('horse', 'leap');
+    const strikePos = dstV.clone().addScaledVector(dir, -0.9);
+    animateMove(mesh, strikePos, 1.95, () => {
+      setAttackPhase('horse', 'lance');
+      sndHorse();
+      fx.horseLance(capPos, dir, effectColor);
+      flingPiece(capMesh, dir, 'pierce', () => {
+        setAttackPhase('horse', 'advance');
+        animateMove(mesh, dstV, 0.24, finish, 0.24);
+      });
     }, 0.55);
-  } else {
-    // 帅/仕/相/兵: 武器蓄势挥击，命中后再进占目标位置
+  } else if (piece.type === 'general') {
+    // 帅/将: 双手举剑蓄力 -> 金色重劈 -> 将令震环
     const weapon = mesh.userData.rig?.weapon;
     const rest = weapon?.rotation.z ?? 0;
-    animateRotation(mesh, weapon, 'z', rest - 0.62, 0.16, () => {
-      animateRotation(mesh, weapon, 'z', rest + 0.76, 0.13, () => {
-        sndCapture();
+    animateRotation(mesh, weapon, 'z', rest - 0.86, 0.22, () => {
+      setAttackPhase('general', 'cleave');
+      animateRotation(mesh, weapon, 'z', rest + 0.54, 0.16, () => {
+        sndGeneral();
         sndHit();
-        fx.slash(capPos, SLASH_COLOR[piece.type]);
-        if (piece.type === 'elephant') fx.impactDust(capPos);
-        animateRotation(mesh, weapon, 'z', rest, 0.22);
-        flingPiece(capMesh, dir, 'slash', () => {
-          animateMove(mesh, dstV, arcFor(piece.type), finish, 0.5);
+        fx.generalCleave(capPos, dir, effectColor);
+        animateRotation(mesh, weapon, 'z', rest, 0.26);
+        flingPiece(capMesh, dir, 'general', () => {
+          setAttackPhase('general', 'advance');
+          animateMove(mesh, dstV, 0.6, finish, 0.52);
         });
       });
     });
+  } else if (piece.type === 'advisor') {
+    // 仕/士: 侧身抽剑 -> 双燕交叉快斩 -> 八角护印
+    const weapon = mesh.userData.rig?.weapon;
+    const rest = weapon?.rotation.z ?? 0;
+    animateRotation(mesh, weapon, 'z', rest - 0.36, 0.11, () => {
+      setAttackPhase('advisor', 'cross-cut');
+      animateRotation(mesh, weapon, 'z', rest + 0.58, 0.1, () => {
+        animateRotation(mesh, weapon, 'z', rest - 0.24, 0.09, () => {
+          sndAdvisor();
+          fx.advisorCrossCut(capPos, dir, effectColor);
+          animateRotation(mesh, weapon, 'z', rest, 0.18);
+          flingPiece(capMesh, dir, 'advisor', () => {
+            setAttackPhase('advisor', 'advance');
+            animateMove(mesh, dstV, 0.4, finish, 0.42);
+          });
+        });
+      });
+    });
+  } else if (piece.type === 'elephant') {
+    // 相/象: 举杖蓄势 -> 象足/朝杖撼地 -> 玉色震环与飞石
+    const weapon = mesh.userData.rig?.weapon;
+    const rest = weapon?.rotation.z ?? 0;
+    animateRotation(mesh, weapon, 'z', rest + 0.46, 0.2, () => {
+      setAttackPhase('elephant', 'quake');
+      animateRotation(mesh, weapon, 'z', rest - 0.82, 0.16, () => {
+        sndElephant();
+        fx.elephantQuake(capPos, effectColor);
+        animateRotation(mesh, weapon, 'z', rest, 0.25);
+        flingPiece(capMesh, dir, 'quake', () => {
+          setAttackPhase('elephant', 'advance');
+          animateMove(mesh, dstV, 0.32, finish, 0.48);
+        });
+      });
+    });
+  } else if (piece.type === 'soldier') {
+    // 兵/卒: 举盾前顶 -> 整体短冲 -> 阵营色枪芒直刺
+    const weapon = mesh.userData.rig?.weapon;
+    const weaponRest = weapon?.position.z ?? 0;
+    const lungePos = dstV.clone().addScaledVector(dir, -0.72);
+    setAttackPhase('soldier', 'shield-rush');
+    animateMove(mesh, lungePos, 0.16, () => {
+      setAttackPhase('soldier', 'thrust');
+      animatePosition(mesh, weapon, 'z', weaponRest + 0.42, 0.12, () => {
+        sndSoldier();
+        fx.soldierThrust(mesh.position, capPos, dir, effectColor);
+        animatePosition(mesh, weapon, 'z', weaponRest, 0.18);
+        flingPiece(capMesh, dir, 'soldier', () => {
+          setAttackPhase('soldier', 'advance');
+          animateMove(mesh, dstV, 0.18, finish, 0.3);
+        });
+      });
+    }, 0.2);
+  } else {
+    // 新增兵种或异常数据也必须完成回合，避免攻击流程永久锁住。
+    sndCapture();
+    fx.slash(capPos, effectColor || 0xfff0c0);
+    flingPiece(capMesh, dir, 'slash', () => animateMove(mesh, dstV, 0.5, finish, 0.45));
   }
 }
 
@@ -395,7 +567,7 @@ renderer.domElement.addEventListener('pointerup', ev => {
   const dx = ev.clientX - downPos[0], dy = ev.clientY - downPos[1];
   downPos = null;
   if (dx * dx + dy * dy > 36) return; // 拖拽视角不算点击
-  if (gameOver || tweens.length || fx.busy) return;
+  if (gameOver || actionPhase !== 'idle' || tweens.length) return;
 
   const { marker, pieceRoot } = castAt(ev);
   if (marker) {
@@ -443,7 +615,7 @@ renderer.domElement.addEventListener('pointermove', ev => {
 document.getElementById('btnRestart').addEventListener('click', resetGame);
 document.getElementById('btnAgain').addEventListener('click', resetGame);
 document.getElementById('btnUndo').addEventListener('click', () => {
-  if (tweens.length || fx.busy) return;
+  if (actionPhase !== 'idle' || tweens.length) return;
   const h = R.undo(state);
   if (!h) return;
   gameOver = false;
@@ -569,9 +741,15 @@ function updateScene(dt) {
   window.__markChessReady?.();
 }
 
+let deterministicFrameRendered = false;
 function animate() {
   requestAnimationFrame(animate);
-  updateScene(clock.getDelta());
+  const dt = clock.getDelta();
+  if (!deterministicTestMode) updateScene(dt);
+  else if (!deterministicFrameRendered) {
+    deterministicFrameRendered = true;
+    updateScene(0);
+  }
 }
 
 window.addEventListener('resize', () => {
@@ -592,14 +770,26 @@ window.render_game_to_text = () => JSON.stringify({
   coordinateSystem: 'row 0 is black home rank; row increases toward red; col 0 is left from red view',
   turn: state.turn,
   phase: actionPhase,
+  lastAttackType,
   gameOver,
+  attack: DEMO_TYPES.has(demoType) ? {
+    type: lastAttackType || demoType,
+    stage: actionPhase.includes('-') ? actionPhase.slice(actionPhase.indexOf('-') + 1) : actionPhase,
+    effectKey: lastAttackType || demoType,
+    attackerId: 10,
+    targetId: 20,
+    targetVisualAlive: meshById.get(20)?.parent === piecesGroup,
+  } : null,
+  tweenCount: tweens.length,
+  effectsBusy: fx.busy,
   selected: selected ? { id: selected.id, type: selected.type, row: selected.row, col: selected.col } : null,
   legalTargets: selectedMoves.map(m => ({ row: m.row, col: m.col })),
   pieces: state.pieces.map(p => ({ id: p.id, color: p.color, type: p.type, row: p.row, col: p.col })),
 });
 
 window.advanceTime = ms => {
-  const steps = Math.max(1, Math.round(ms / (1000 / 60)));
+  if (!deterministicTestMode || !Number.isFinite(ms) || ms <= 0) return;
+  const steps = Math.min(600, Math.max(1, Math.round(ms / (1000 / 60))));
   for (let i = 0; i < steps; i++) updateScene(1 / 60);
 };
 
@@ -607,10 +797,28 @@ buildAllPieces();
 refreshHUD();
 animate();
 
-// 演示钩子: ?demo=cannon 自动走一步炮吃马（用于调试攻击动画）
-if (new URLSearchParams(location.search).get('demo') === 'cannon') {
-  setTimeout(() => {
-    const p = state.pieces.find(p => p.type === 'cannon' && p.color === R.RED && p.col === 1);
-    if (p) doMove(p, { row: 0, col: 1 });
-  }, 600);
+// 七类攻击演示：?demo=general|advisor|elephant|horse|chariot|cannon|soldier
+if (DEMO_TYPES.has(demoType)) {
+  let demoStarted = false;
+  const trigger = document.createElement('button');
+  trigger.id = 'demoTrigger';
+  trigger.className = 'demo-trigger';
+  trigger.textContent = `演示 · ${R.GLYPH[R.RED][demoType]}攻`;
+  trigger.addEventListener('click', () => {
+    if (demoStarted) return;
+    demoStarted = true;
+    trigger.remove();
+    const attacker = state.pieces.find(piece => piece.id === 10);
+    const target = state.pieces.find(piece => piece.id === 20);
+    const move = attacker && target && R.legalMoves(state.pieces, attacker)
+      .find(candidate => candidate.row === target.row && candidate.col === target.col);
+    if (!move) {
+      console.error(`Invalid ${demoType} attack demo fixture`);
+      return;
+    }
+    doMove(attacker, move);
+  });
+  document.body.appendChild(trigger);
+  window.__attackDemo = { type: demoType, start: () => trigger.click() };
+  if (!deterministicTestMode) setTimeout(() => trigger.click(), 700);
 }

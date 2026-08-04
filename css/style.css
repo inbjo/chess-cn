@@ -61,6 +61,24 @@ html, body {
 @keyframes bootSweep { from { transform: translateX(-120%); } to { transform: translateX(340%); } }
 .noscript { position: fixed; inset: 0; z-index: 110; display: grid; place-items: center; background: #140e09; color: #f0c978; }
 
+.demo-trigger {
+  position: fixed;
+  left: 50%;
+  bottom: 64px;
+  z-index: 25;
+  transform: translateX(-50%);
+  padding: 10px 24px;
+  color: #2a1608;
+  font: 700 14px/1 "Noto Serif SC", "Songti SC", serif;
+  letter-spacing: 3px;
+  background: linear-gradient(145deg, #f1ce83, #b8873e);
+  border: 1px solid #ffdf99;
+  border-radius: 999px;
+  box-shadow: 0 8px 30px rgba(190, 126, 48, 0.36);
+  cursor: pointer;
+}
+.demo-trigger:hover { filter: brightness(1.1); }
+
 /* ---------- 顶部 HUD ---------- */
 .hud-top {
   position: fixed;

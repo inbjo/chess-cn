@@ -26,17 +26,20 @@ Three.js 与 OrbitControls 已固定版本并随项目本地托管，断网也�
 
 古战场沙盘：风化夯土、干涸河谷、插地断矛、破损盾牌、营前战鼓、楚/漢战旗、火盆与余烬。吃子时按兵种播放攻击动画：
 
+- 帅/将 — 举剑蓄势后纵劈，将令震环把目标斩飞
+- 仕/士 — 双燕交叉快斩，落下旋转的八角护印
+- 相/象 — 朝杖撼地，释放玉色地裂、双重震环与飞石
+- 馬 — 高跃挺槊，以长枪芒贯穿目标并踏尘落位
+- 車 — 拖出轮辙与速度光带直线冲城，以扇形撞击波撞飞目标
 - 炮 — 瞄准蓄势、后座点火、发射带烟迹炮弹；爆炸彻底消灭目标后，炮才推进落位
-- 車 — 全速冲锋，撞飞对手并扬起尘环
-- 馬 — 高跃践踏，落地尘环 + 枪芒
-- 帅/仕/相/兵 — 原地挥出刀光/鼻捶消灭对手，再行进落位
+- 兵/卒 — 举盾短冲，以红/蓝阵营色三叉枪芒完成破阵直刺
 
-调试钩子：`index.html?demo=cannon` 会自动演示一步炮击。
+演示入口：`?demo=general|advisor|elephant|horse|chariot|cannon|soldier`；追加 `&test=1` 可由 `window.advanceTime()` 确定性逐帧推进。
 
 ## 测试
 
 ```bash
-node test/rules.test.js
+npm run check
 ```
 
 ## 结构
@@ -44,6 +47,6 @@ node test/rules.test.js
 - `js/rules.js` — 纯规则引擎（不依赖 DOM/Three.js）
 - `js/pieces.js` — 拟人化棋子建模（基础几何体拼搭）
 - `js/board3d.js` — 棋盘、标记、战场环境
-- `js/fx.js` — 战斗特效（炮弹/爆炸/刀光/尘土）
+- `js/fx.js` — 七类兵种专属战斗特效与临时资源回收
 - `js/main.js` — 场景、交互、攻击动画编排、HUD、音效
 - `vendor/three/` — 本地固定版本的 Three.js 与 OrbitControls
