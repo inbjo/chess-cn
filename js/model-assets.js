@@ -35,6 +35,8 @@ function normalizeModel(scene, type) {
   root.name = `tripo-${type}`;
   root.add(scene);
 
+  // Tripo 资产以 +X 为正面；项目的朝向与攻击动画统一以 +Z 为正面。
+  scene.rotateY(-Math.PI / 2);
   scene.updateMatrixWorld(true);
   const sourceBox = new THREE.Box3().setFromObject(scene);
   const sourceSize = sourceBox.getSize(new THREE.Vector3());
