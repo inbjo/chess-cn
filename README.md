@@ -9,6 +9,10 @@ Three.js 打造的 3D 中国象棋，棋子为拟人化战阵设计：重甲拄�
 
 https://github.com/user-attachments/assets/8aae6350-6348-47c0-bc0f-48be18bcc7e8
 
+## 棋子模型
+
+帅、仕、象、马、车、炮、兵七类角色由 Tripo v3.1 重绘，并针对 WebGL 完成网格简化与纹理压缩；红黑双方共享角色资产，通过阵营底座与色调区分。模型加载失败时会自动回退到程序化基础几何版本。
+
 ## 运行
 
 ```bash
@@ -52,8 +56,10 @@ npm run check
 ## 结构
 
 - `js/rules.js` — 纯规则引擎（不依赖 DOM/Three.js）
-- `js/pieces.js` — 拟人化棋子建模（基础几何体拼搭）
+- `js/model-assets.js` — Tripo 棋子资产预加载、尺寸归一化与阵营色处理
+- `js/pieces.js` — Tripo 拟人棋子与程序化汉字底座（含基础几何回退）
 - `js/board3d.js` — 棋盘、标记、战场环境
 - `js/fx.js` — 七类兵种专属战斗特效与临时资源回收
 - `js/main.js` — 场景、交互、攻击动画编排、HUD、音效
 - `vendor/three/` — 本地固定版本的 Three.js 与 OrbitControls
+- `assets/models/` — 七类经 Web 优化的 Tripo GLB 棋子模型

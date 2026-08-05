@@ -1,7 +1,8 @@
-// 拟人化棋子建模 —— 全部用 Three.js 基础几何体拼搭
+// 拟人化棋子建模：Tripo 角色 + Three.js 汉字底座；基础几何角色保留为加载失败回退。
 // 每个棋子 = 底座(带汉字) + 角色。角色正面朝 +z，由 main.js 按阵营转向。
 import * as THREE from 'three';
 import { GLYPH } from './rules.js';
+import { createGeneratedFigure } from './model-assets.js';
 
 const SIDE = {
   red: {
@@ -616,9 +617,10 @@ export function createPieceMesh(type, color) {
   const s = SIDE[color];
   const root = new THREE.Group();
   root.add(pedestal(color, type));
-  const figure = BUILDERS[type](s);
+  const generatedFigure = createGeneratedFigure(type, color);
+  const figure = generatedFigure || BUILDERS[type](s);
   const rig = figure.userData.rig || {};
-  batchStaticFigure(figure, type, color, [rig.weapon]);
+  if (!generatedFigure) batchStaticFigure(figure, type, color, [rig.weapon]);
   figure.position.y = 0.34;
   root.add(figure);
   const hitArea = new THREE.Mesh(

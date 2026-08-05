@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import * as R from './rules.js';
 import { createPieceMesh } from './pieces.js';
+import { preloadPieceModels } from './model-assets.js';
 import { createBoard, createMarkers, createEnvironment, squareToWorld } from './board3d.js';
 import { FX } from './fx.js';
 
@@ -819,6 +820,7 @@ window.render_game_to_text = () => JSON.stringify({
   } : null,
   tweenCount: tweens.length,
   effectsBusy: fx.busy,
+  modelAssets: window.__tripoModelCount || 0,
   selected: selected ? { id: selected.id, type: selected.type, row: selected.row, col: selected.col } : null,
   legalTargets: selectedMoves.map(m => ({ row: m.row, col: m.col })),
   pieces: state.pieces.map(p => ({ id: p.id, color: p.color, type: p.type, row: p.row, col: p.col })),
@@ -830,6 +832,10 @@ window.advanceTime = ms => {
   for (let i = 0; i < steps; i++) updateScene(1 / 60, i === steps - 1);
 };
 
+const bootText = document.getElementById('bootText');
+window.__tripoModelCount = await preloadPieceModels((completed, total) => {
+  if (bootText) bootText.textContent = `正在点将 · 重塑战阵 ${completed}/${total}`;
+});
 buildAllPieces();
 refreshHUD();
 animate();
