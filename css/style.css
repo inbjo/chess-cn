@@ -300,8 +300,8 @@ body.general-cinematic-active .demo-trigger {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse at 50% 47%, transparent 27%, rgba(5, 3, 2, 0.2) 58%, rgba(2, 1, 1, 0.82) 100%),
-    linear-gradient(90deg, rgba(var(--cinematic-color), 0.12), transparent 24%, transparent 76%, rgba(var(--cinematic-color), 0.09));
+    radial-gradient(ellipse at 50% 44%, transparent 18%, rgba(5, 3, 2, 0.16) 48%, rgba(2, 1, 1, 0.9) 100%),
+    linear-gradient(90deg, rgba(var(--cinematic-color), 0.2), transparent 28%, transparent 72%, rgba(var(--cinematic-color), 0.16));
 }
 .cinematic-speedlines {
   position: absolute;
@@ -316,7 +316,7 @@ body.general-cinematic-active .demo-trigger {
   position: absolute;
   z-index: 3;
   left: clamp(28px, 7vw, 110px);
-  bottom: clamp(60px, 12vh, 128px);
+  bottom: clamp(48px, 9vh, 96px);
   display: flex;
   align-items: flex-end;
   gap: 22px;
@@ -328,7 +328,7 @@ body.general-cinematic-active .demo-trigger {
 #generalCinematic.active .cinematic-title { animation: cinematicTitle 1.05s 0.12s cubic-bezier(0.18, 0.9, 0.2, 1) both; }
 .cinematic-title span {
   font-family: "Ma Shan Zheng", "STKaiti", serif;
-  font-size: clamp(88px, 15vw, 190px);
+  font-size: clamp(112px, 19vw, 240px);
   line-height: 0.72;
   text-shadow: 3px 3px 0 rgba(20, 8, 2, 0.8), 0 0 42px rgba(var(--cinematic-color), 0.5);
 }

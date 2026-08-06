@@ -357,8 +357,9 @@ function startGeneralCinematic(attacker, target, color) {
   const direction = target.position.clone().sub(attacker.position).setY(0).normalize();
   const side = new THREE.Vector3(-direction.z, 0, direction.x)
     .multiplyScalar(color === R.RED ? 1 : -1);
-  const focus = attacker.position.clone().lerp(target.position, 0.56);
-  focus.y = squareToWorld(0, 0).y + 1.55;
+  // 特写以主将胸口为中心，而不是攻击双方的中点；否则棋盘会占据大部分画面。
+  const focus = attacker.position.clone().addScaledVector(direction, 0.28);
+  focus.y = squareToWorld(0, 0).y + 1.5;
   generalCinematic = {
     attacker,
     target,
@@ -455,18 +456,28 @@ function updateGeneralCinematic(dt) {
   }
 
   cinematic.elapsed += dt;
-  const intro = Math.min(cinematic.elapsed / 0.34, 1);
-  const orbit = Math.min(Math.max((cinematic.elapsed - 0.28) / 0.95, 0), 1);
+  const intro = Math.min(cinematic.elapsed / 0.28, 1);
+  const orbit = Math.min(Math.max((cinematic.elapsed - 0.16) / 0.62, 0), 1);
   const orbitEase = easeInOut(orbit);
   if (cinematic.impactTime >= 0) {
-    // 命中后不追随被击飞目标，镜头缓慢重新构图到获胜主将。
-    const heroFocus = cinematic.attacker.position.clone().addScaledVector(cinematic.direction, 0.32);
-    heroFocus.y = squareToWorld(0, 0).y + 1.55;
-    cinematic.focus.lerp(heroFocus, Math.min(dt * 3.6, 1));
+    // 命中后锁定获胜主将的上半身，不追随被击飞目标。
+    const heroFocus = cinematic.attacker.position.clone().addScaledVector(cinematic.direction, 0.18);
+    heroFocus.y = squareToWorld(0, 0).y + 1.62;
+    cinematic.focus.lerp(heroFocus, Math.min(dt * 7.2, 1));
   }
-  const sideDistance = THREE.MathUtils.lerp(5.4, 3.45, orbitEase);
-  const alongDistance = THREE.MathUtils.lerp(-2.7, 1.0, orbitEase);
-  const height = THREE.MathUtils.lerp(3.55, 2.5, orbitEase);
+  const impactPush = cinematic.impactTime < 0
+    ? 0
+    : easeOut(Math.min(cinematic.impactTime / 0.22, 1));
+  const portraitCompensation = camera.aspect < 0.9 ? 1.22 : 1;
+  // 主体在蓄力时约占 75% 屏高，命中后继续推进至近乎满屏。
+  const sideDistance = THREE.MathUtils.lerp(6.2, 4.8, orbitEase)
+    * THREE.MathUtils.lerp(1, 0.82, impactPush)
+    * portraitCompensation;
+  // 机位越过目标一侧回拍主将，确保特写看到面部而不是后脑与背甲。
+  const alongDistance = THREE.MathUtils.lerp(5.5, 4.3, orbitEase)
+    * THREE.MathUtils.lerp(1, 0.82, impactPush);
+  const height = THREE.MathUtils.lerp(3.2, 2.3, orbitEase)
+    - 0.1 * impactPush;
   const shotPosition = cinematic.focus.clone()
     .addScaledVector(cinematic.side, sideDistance)
     .addScaledVector(cinematic.direction, alongDistance);
@@ -482,7 +493,8 @@ function updateGeneralCinematic(dt) {
   }
 
   camera.position.copy(cameraPosition);
-  camera.fov = THREE.MathUtils.lerp(cinematic.savedFov, cinematic.impactTime >= 0 ? 29 : 32, easeInOut(intro));
+  const closeupFov = THREE.MathUtils.lerp(32, 27, impactPush);
+  camera.fov = THREE.MathUtils.lerp(cinematic.savedFov, closeupFov, easeInOut(intro));
   camera.updateProjectionMatrix();
   camera.lookAt(cinematic.focus);
   const flash = cinematic.impactTime >= 0 ? Math.max(0, 1 - cinematic.impactTime / 0.22) : 0;
@@ -832,6 +844,7 @@ document.getElementById('btnCam').addEventListener('click', () => {
 
 // ---------- 渲染循环 ----------
 const clock = new THREE.Clock();
+function easeOut(p) { return 1 - Math.pow(1 - p, 3); }
 function easeInOut(p) { return p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2; }
 let simulationTime = 0;
 let shadowUpdateFrame = 0;
