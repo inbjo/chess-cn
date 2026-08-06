@@ -7,6 +7,14 @@ Three.js 打造的 3D 中国象棋，棋子为拟人化战阵设计：重甲拄�
 
 ## 演示视频
 
+### 帅 / 将全屏击杀特写
+
+[▶ 播放红帅与黑将全屏特写（MP4，7 秒）](media/general-cinematic.mp4)
+
+包含推镜、正面英雄特写、命中震屏与闪光，以及结束后的镜头复位。
+
+### 完整攻击演示
+
 https://github.com/user-attachments/assets/8aae6350-6348-47c0-bc0f-48be18bcc7e8
 
 ## 棋子模型
