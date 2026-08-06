@@ -81,14 +81,20 @@ scene.add(piecesGroup);
 
 const pageParams = new URLSearchParams(location.search);
 const demoType = pageParams.get('demo');
+const demoSide = pageParams.get('side') === R.BLACK ? R.BLACK : R.RED;
 const deterministicTestMode = pageParams.get('test') === '1';
 const DEMO_TYPES = new Set(['general', 'advisor', 'elephant', 'horse', 'chariot', 'cannon', 'soldier']);
 
-function createAttackDemoState(type) {
+function createAttackDemoState(type, attackingColor = R.RED) {
   const redGeneral = { id: 80, type: 'general', color: R.RED, row: 9, col: 4 };
   const blackGeneral = { id: 90, type: 'general', color: R.BLACK, row: 0, col: 4 };
   const fixtures = {
-    general: [
+    general: attackingColor === R.BLACK ? [
+      { id: 10, type: 'general', color: R.BLACK, row: 1, col: 4 },
+      { id: 20, type: 'cannon', color: R.RED, row: 2, col: 4 },
+      redGeneral,
+      { id: 30, type: 'soldier', color: R.RED, row: 5, col: 4 },
+    ] : [
       { id: 10, type: 'general', color: R.RED, row: 8, col: 4 },
       { id: 20, type: 'cannon', color: R.BLACK, row: 7, col: 4 },
       blackGeneral,
@@ -130,10 +136,10 @@ function createAttackDemoState(type) {
       { id: 30, type: 'soldier', color: R.RED, row: 5, col: 4 },
     ],
   };
-  return { pieces: fixtures[type].map(piece => ({ ...piece })), turn: R.RED, history: [], lastMove: null };
+  return { pieces: fixtures[type].map(piece => ({ ...piece })), turn: attackingColor, history: [], lastMove: null };
 }
 
-let state = DEMO_TYPES.has(demoType) ? createAttackDemoState(demoType) : R.createInitialState();
+let state = DEMO_TYPES.has(demoType) ? createAttackDemoState(demoType, demoSide) : R.createInitialState();
 let meshById = new Map();   // pieceId -> THREE.Group
 const pieceHitAreas = [];
 let selected = null;        // 当前选中棋子
@@ -142,6 +148,9 @@ let gameOver = false;
 let actionPhase = 'idle';
 let lastAttackType = null;
 const tweens = [];
+const generalCinematicEl = document.getElementById('generalCinematic');
+const cinematicGlyph = document.getElementById('cinematicGlyph');
+let generalCinematic = null;
 
 function buildAllPieces() {
   for (const p of state.pieces) {
@@ -165,6 +174,7 @@ function disposeOwnedPieceMaterials(mesh) {
 }
 
 function resetGame() {
+  cancelGeneralCinematic();
   state = R.createInitialState();
   gameOver = false;
   selected = null;
@@ -342,6 +352,143 @@ function restoreFacing(mesh) {
   mesh.rotation.y = mesh.userData.baseFacing;
 }
 
+function startGeneralCinematic(attacker, target, color) {
+  cancelGeneralCinematic();
+  const direction = target.position.clone().sub(attacker.position).setY(0).normalize();
+  const side = new THREE.Vector3(-direction.z, 0, direction.x)
+    .multiplyScalar(color === R.RED ? 1 : -1);
+  const focus = attacker.position.clone().lerp(target.position, 0.56);
+  focus.y = squareToWorld(0, 0).y + 1.55;
+  generalCinematic = {
+    attacker,
+    target,
+    direction,
+    side,
+    focus,
+    elapsed: 0,
+    impactTime: -1,
+    returning: false,
+    returnTime: 0,
+    savedPosition: camera.position.clone(),
+    savedTarget: controls.target.clone(),
+    savedFov: camera.fov,
+    savedExposure: renderer.toneMappingExposure,
+    controlsEnabled: controls.enabled,
+    onDone: null,
+  };
+  controls.enabled = false;
+  generalCinematicEl.dataset.side = color;
+  cinematicGlyph.textContent = color === R.RED ? '帥' : '將';
+  generalCinematicEl.classList.remove('impact');
+  generalCinematicEl.classList.add('active');
+  generalCinematicEl.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('general-cinematic-active');
+}
+
+function triggerGeneralImpact() {
+  if (!generalCinematic) return;
+  generalCinematic.impactTime = 0;
+  generalCinematicEl.classList.remove('impact');
+  // 允许连续演示时重新触发闪光与震屏动画。
+  void generalCinematicEl.offsetWidth;
+  generalCinematicEl.classList.add('impact');
+}
+
+function endGeneralCinematic(onDone) {
+  if (!generalCinematic) {
+    onDone?.();
+    return;
+  }
+  generalCinematic.returning = true;
+  generalCinematic.returnTime = 0;
+  generalCinematic.returnPosition = camera.position.clone();
+  generalCinematic.returnTarget = generalCinematic.focus.clone();
+  generalCinematic.returnFov = camera.fov;
+  generalCinematic.returnExposure = renderer.toneMappingExposure;
+  generalCinematic.onDone = onDone;
+  generalCinematicEl.classList.remove('impact');
+}
+
+function cancelGeneralCinematic() {
+  if (!generalCinematic) return;
+  camera.position.copy(generalCinematic.savedPosition);
+  camera.fov = generalCinematic.savedFov;
+  camera.updateProjectionMatrix();
+  renderer.toneMappingExposure = generalCinematic.savedExposure;
+  controls.target.copy(generalCinematic.savedTarget);
+  controls.enabled = generalCinematic.controlsEnabled;
+  generalCinematic = null;
+  generalCinematicEl.classList.remove('active', 'impact');
+  generalCinematicEl.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('general-cinematic-active');
+}
+
+function updateGeneralCinematic(dt) {
+  const cinematic = generalCinematic;
+  if (!cinematic) return;
+
+  if (cinematic.returning) {
+    cinematic.returnTime += dt;
+    const p = Math.min(cinematic.returnTime / 0.62, 1);
+    const e = easeInOut(p);
+    camera.position.lerpVectors(cinematic.returnPosition, cinematic.savedPosition, e);
+    const lookAt = cinematic.returnTarget.clone().lerp(cinematic.savedTarget, e);
+    camera.fov = THREE.MathUtils.lerp(cinematic.returnFov, cinematic.savedFov, e);
+    renderer.toneMappingExposure = THREE.MathUtils.lerp(cinematic.returnExposure, cinematic.savedExposure, e);
+    camera.updateProjectionMatrix();
+    camera.lookAt(lookAt);
+    if (p < 1) return;
+
+    const done = cinematic.onDone;
+    camera.position.copy(cinematic.savedPosition);
+    camera.fov = cinematic.savedFov;
+    camera.updateProjectionMatrix();
+    renderer.toneMappingExposure = cinematic.savedExposure;
+    controls.target.copy(cinematic.savedTarget);
+    controls.enabled = cinematic.controlsEnabled;
+    generalCinematic = null;
+    generalCinematicEl.classList.remove('active', 'impact');
+    generalCinematicEl.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('general-cinematic-active');
+    done?.();
+    return;
+  }
+
+  cinematic.elapsed += dt;
+  const intro = Math.min(cinematic.elapsed / 0.34, 1);
+  const orbit = Math.min(Math.max((cinematic.elapsed - 0.28) / 0.95, 0), 1);
+  const orbitEase = easeInOut(orbit);
+  if (cinematic.impactTime >= 0) {
+    // 命中后不追随被击飞目标，镜头缓慢重新构图到获胜主将。
+    const heroFocus = cinematic.attacker.position.clone().addScaledVector(cinematic.direction, 0.32);
+    heroFocus.y = squareToWorld(0, 0).y + 1.55;
+    cinematic.focus.lerp(heroFocus, Math.min(dt * 3.6, 1));
+  }
+  const sideDistance = THREE.MathUtils.lerp(5.4, 3.45, orbitEase);
+  const alongDistance = THREE.MathUtils.lerp(-2.7, 1.0, orbitEase);
+  const height = THREE.MathUtils.lerp(3.55, 2.5, orbitEase);
+  const shotPosition = cinematic.focus.clone()
+    .addScaledVector(cinematic.side, sideDistance)
+    .addScaledVector(cinematic.direction, alongDistance);
+  shotPosition.y += height;
+  const cameraPosition = cinematic.savedPosition.clone().lerp(shotPosition, easeInOut(intro));
+
+  if (cinematic.impactTime >= 0) {
+    cinematic.impactTime += dt;
+    const shakeP = Math.min(cinematic.impactTime / 0.3, 1);
+    const strength = (1 - shakeP) * 0.24;
+    cameraPosition.addScaledVector(cinematic.side, Math.sin(shakeP * 79) * strength);
+    cameraPosition.y += Math.sin(shakeP * 113) * strength * 0.55;
+  }
+
+  camera.position.copy(cameraPosition);
+  camera.fov = THREE.MathUtils.lerp(cinematic.savedFov, cinematic.impactTime >= 0 ? 29 : 32, easeInOut(intro));
+  camera.updateProjectionMatrix();
+  camera.lookAt(cinematic.focus);
+  const flash = cinematic.impactTime >= 0 ? Math.max(0, 1 - cinematic.impactTime / 0.22) : 0;
+  renderer.toneMappingExposure = cinematic.savedExposure * (1 + 0.13 * intro + 0.22 * flash);
+}
+
 const ATTACK_COLOR = {
   red: {
     general: 0xffd36a, advisor: 0xffd7b0, elephant: 0x91d0a5,
@@ -472,19 +619,21 @@ function doMove(piece, to) {
       });
     }, 0.55);
   } else if (piece.type === 'general') {
-    // 帅/将: 双手举剑蓄力 -> 金色重劈 -> 将令震环
+    // 帅/将: 全屏推镜侧绕 -> 双手举剑蓄力 -> 金色重劈 -> 将令震环 -> 回镜
+    startGeneralCinematic(mesh, capMesh, piece.color);
     const weapon = mesh.userData.rig?.weapon;
     const rest = weapon?.rotation.z ?? 0;
     animateRotation(mesh, weapon, 'z', rest - 0.86, 0.22, () => {
       setAttackPhase('general', 'cleave');
       animateRotation(mesh, weapon, 'z', rest + 0.54, 0.16, () => {
+        triggerGeneralImpact();
         sndGeneral();
         sndHit();
         fx.generalCleave(capPos, dir, effectColor);
         animateRotation(mesh, weapon, 'z', rest, 0.26);
         flingPiece(capMesh, dir, 'general', () => {
           setAttackPhase('general', 'advance');
-          animateMove(mesh, dstV, 0.6, finish, 0.52);
+          animateMove(mesh, dstV, 0.6, () => endGeneralCinematic(finish), 0.52);
         });
       });
     });
@@ -668,6 +817,7 @@ document.getElementById('btnUndo').addEventListener('click', () => {
 
 let flipped = false;
 document.getElementById('btnCam').addEventListener('click', () => {
+  if (generalCinematic || actionPhase !== 'idle') return;
   flipped = !flipped;
   const t = { t: 0 };
   const from = camera.position.clone();
@@ -766,6 +916,7 @@ function updateScene(dt, renderFrame = true) {
   pos.needsUpdate = true;
 
   controls.update();
+  updateGeneralCinematic(dt);
   if (shadowsWereAnimating && (shadowUpdateFrame++ % 2 === 0 || tweens.length === 0)) {
     renderer.shadowMap.needsUpdate = true;
   }
@@ -820,6 +971,11 @@ window.render_game_to_text = () => JSON.stringify({
   } : null,
   tweenCount: tweens.length,
   effectsBusy: fx.busy,
+  cinematic: generalCinematic ? {
+    active: true,
+    returning: generalCinematic.returning,
+    impact: generalCinematic.impactTime >= 0,
+  } : { active: false, returning: false, impact: false },
   modelAssets: window.__tripoModelCount || 0,
   selected: selected ? { id: selected.id, type: selected.type, row: selected.row, col: selected.col } : null,
   legalTargets: selectedMoves.map(m => ({ row: m.row, col: m.col })),
@@ -846,7 +1002,7 @@ if (DEMO_TYPES.has(demoType)) {
   const trigger = document.createElement('button');
   trigger.id = 'demoTrigger';
   trigger.className = 'demo-trigger';
-  trigger.textContent = `演示 · ${R.GLYPH[R.RED][demoType]}攻`;
+  trigger.textContent = `演示 · ${R.GLYPH[demoSide][demoType]}攻`;
   trigger.addEventListener('click', () => {
     if (demoStarted) return;
     demoStarted = true;
