@@ -114,6 +114,25 @@ t('不能送将（非法着法被过滤）', () => {
   assert.ok(legal.includes('9,3') || legal.includes('9,5'));
 });
 
+t('双子隔炮时两枚棋均受牵制', () => {
+  // 黑炮与红帅之间有红炮、红兵两枚棋时暂未被将军；任意一枚横移后，
+  // 剩下的一枚恰好成为炮架，因此两枚棋虽然有伪合法横移，实际都不能动。
+  const pieces = [
+    { id: 1, type: 'general', color: BLACK, row: 0, col: 4 },
+    { id: 2, type: 'cannon', color: BLACK, row: 2, col: 4 },
+    { id: 3, type: 'cannon', color: RED, row: 3, col: 4 },
+    { id: 4, type: 'soldier', color: RED, row: 4, col: 4 },
+    { id: 5, type: 'general', color: RED, row: 9, col: 4 },
+  ];
+  const redCannon = pieces[2];
+  const redSoldier = pieces[3];
+  assert.equal(isInCheck(pieces, RED), false);
+  assert.ok(pseudoMoves(pieces, redCannon).length > 0);
+  assert.ok(pseudoMoves(pieces, redSoldier).length > 0);
+  assert.equal(legalMoves(pieces, redCannon).length, 0);
+  assert.equal(legalMoves(pieces, redSoldier).length, 0);
+});
+
 // ---- 将杀 ----
 t('中炮锁将+车封底线绝杀', () => {
   // 红炮(5,4)以红兵(3,4)为架将军；红车(0,0)封住 (0,3)/(0,5)
@@ -133,6 +152,22 @@ t('中炮锁将+车封底线绝杀', () => {
   assert.ok(st.check);
   assert.ok(st.over);
   assert.equal(st.winner, RED);
+});
+
+t('将帅无路时仍可由其他棋子解将', () => {
+  const pieces = [
+    { id: 1, type: 'general', color: BLACK, row: 0, col: 4 },
+    { id: 2, type: 'general', color: RED, row: 9, col: 4 },
+    { id: 3, type: 'chariot', color: BLACK, row: 7, col: 4 },
+    { id: 4, type: 'chariot', color: BLACK, row: 8, col: 3 },
+    { id: 5, type: 'chariot', color: BLACK, row: 8, col: 5 },
+    { id: 6, type: 'chariot', color: RED, row: 7, col: 0 },
+  ];
+  const s = { pieces, turn: RED, history: [], lastMove: null };
+  assert.ok(isInCheck(pieces, RED));
+  assert.equal(legalMoves(pieces, pieces[1]).length, 0);
+  assert.deepEqual(legalMoves(pieces, pieces[5]), [{ row: 7, col: 4 }]);
+  assert.equal(gameStatus(s).over, false);
 });
 
 t('困毙也算负（无子可动即败）', () => {

@@ -1,14 +1,21 @@
 // 主程序: 场景搭建、走子交互、动画、HUD、音效
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import * as R from './rules.js';
-import { createPieceMesh } from './pieces.js';
-import { preloadPieceModels } from './model-assets.js';
-import { createBoard, createMarkers, createEnvironment, squareToWorld } from './board3d.js';
-import { FX } from './fx.js';
+import * as R from './rules.js?v=20260901.3';
+import { createPieceMesh } from './pieces.js?v=20260901.3';
+import { preloadPieceModels } from './model-assets.js?v=20260901.3';
+import { createBoard, createMarkers, createEnvironment, squareToWorld } from './board3d.js?v=20260901.3';
+import { FX } from './fx.js?v=20260901.3';
+import { probeWasmAi, resetWasmAi, searchWasmAi, uciToMove } from './ai-engine.js?v=20260901.3';
+
+function requiredElement(id) {
+  const element = document.getElementById(id);
+  if (!element) throw new Error(`界面资源版本不一致，缺少 #${id}，请强制刷新页面`);
+  return element;
+}
 
 // ---------- 渲染器 / 场景 ----------
-const canvas = document.getElementById('scene');
+const canvas = requiredElement('scene');
 let renderer;
 try {
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -147,6 +154,15 @@ let selectedMoves = [];
 let gameOver = false;
 let actionPhase = 'idle';
 let lastAttackType = null;
+let gameMode = 'ai';
+let aiEngine = 'godogpaw';
+let aiDifficulty = 'easy';
+let aiThinking = false;
+let aiRequestVersion = 0;
+let online = null;
+let onlineReconnectTimer = null;
+let onlineMovePending = false;
+const onlineEventQueue = [];
 const tweens = [];
 const generalCinematicEl = document.getElementById('generalCinematic');
 const cinematicGlyph = document.getElementById('cinematicGlyph');
@@ -173,9 +189,12 @@ function disposeOwnedPieceMaterials(mesh) {
   mesh.userData.ownedMaterials = [];
 }
 
-function resetGame() {
+function installGameState(nextState) {
   cancelGeneralCinematic();
-  state = R.createInitialState();
+  aiRequestVersion++;
+  resetWasmAi();
+  aiThinking = false;
+  state = nextState;
   gameOver = false;
   selected = null;
   selectedMoves = [];
@@ -191,6 +210,11 @@ function resetGame() {
   buildAllPieces();
   document.getElementById('overlay').classList.remove('show');
   refreshHUD();
+  refreshBattleControls();
+}
+
+function resetGame() {
+  installGameState(R.createInitialState());
 }
 
 // ---------- HUD ----------
@@ -211,6 +235,384 @@ function refreshHUD() {
   capBlack.push(...missing(R.RED, reds));
   document.getElementById('capRed').innerHTML = capRed.map(g => `<span class="chip black">${g}</span>`).join('') || '<span class="none">—</span>';
   document.getElementById('capBlack').innerHTML = capBlack.map(g => `<span class="chip red">${g}</span>`).join('') || '<span class="none">—</span>';
+}
+
+const modeButtons = [...document.querySelectorAll('.mode-option')];
+if (modeButtons.length !== 3) throw new Error('界面资源版本不一致，缺少对弈模式按钮，请强制刷新页面');
+const aiControls = requiredElement('aiControls');
+const aiEngineSelect = requiredElement('aiEngineSelect');
+const aiDifficultySelect = requiredElement('aiDifficultySelect');
+const aiStatus = requiredElement('aiStatus');
+const difficultyNames = { easy: '入门', medium: '中等', hard: '困难', master: '大师' };
+
+function aiEngineName(engine = aiEngine) {
+  return engine === 'pikafish' ? 'Pikafish' : 'godogpaw WASM';
+}
+
+function refreshBattleControls(status = null) {
+  const aiMode = gameMode === 'ai';
+  const onlineMode = gameMode === 'online';
+  for (const button of modeButtons) {
+    const active = button.dataset.mode === gameMode;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  }
+  aiControls.hidden = !aiMode;
+  aiEngineSelect.value = aiEngine;
+  aiDifficultySelect.value = aiDifficulty;
+  aiEngineSelect.disabled = aiThinking;
+  aiDifficultySelect.disabled = aiThinking;
+  aiStatus.className = 'ai-status';
+  aiStatus.title = aiMode ? `正在检测 ${aiEngineName()}` : onlineMode ? '正在连接联机房间' : '本地双人模式';
+  if (onlineMode) {
+    const ready = online?.connected && online?.opponentConnected;
+    aiStatus.classList.add(ready ? 'online' : 'waiting');
+    aiStatus.title = ready ? '双方已连接' : online ? '等待对手或正在重连' : '请选择创建或加入房间';
+    return;
+  }
+  if (aiThinking) {
+    aiStatus.classList.add('thinking');
+    aiStatus.title = `${aiEngineName()} 正在推演`;
+  } else if (status === 'ready') {
+    aiStatus.classList.add('ready');
+    aiStatus.title = `${aiEngineName()} 已就绪`;
+  } else if (status === 'error') {
+    aiStatus.classList.add('error');
+    aiStatus.title = `${aiEngineName()} 不可用`;
+  }
+}
+
+let hintTimer = null;
+function battleHint(message, error = false) {
+  clearTimeout(hintTimer);
+  hint.textContent = message;
+  hint.classList.toggle('error', error);
+  hintTimer = setTimeout(() => {
+    hint.textContent = !gameOver && isHumanTurn() && R.isInCheck(state.pieces, state.turn)
+      ? '当前被将军 · 请移动绿色高亮棋子解将'
+      : gameMode === 'ai'
+        ? '你执红先行 · 黑方由电脑应战'
+        : gameMode === 'online'
+          ? onlineHintText()
+          : '点击己方棋子查看可走位置 · 拖拽旋转视角';
+    hint.classList.remove('error');
+  }, 3200);
+}
+
+function moveToUci(move) {
+  const square = pos => String.fromCharCode(97 + pos.col) + (9 - pos.row);
+  return square(move.from) + square(move.to);
+}
+
+function isHumanTurn() {
+  if (gameMode === 'ai') return state.turn === R.RED;
+  if (gameMode === 'online') {
+    return !!online?.connected && !!online.opponentConnected && !onlineMovePending && state.turn === online.color;
+  }
+  return true;
+}
+
+function onlineHintText() {
+  if (!online?.connected) return '联机中断 · 正在重连军帐';
+  if (!online.opponentConnected) return `军帐 ${online.roomId} · 等待对手加入`;
+  return state.turn === online.color ? `军帐 ${online.roomId} · 轮到你行棋` : `军帐 ${online.roomId} · 等待对手落子`;
+}
+
+function parseUci(uci) {
+  const square = (file, rank) => ({ col: file.charCodeAt(0) - 97, row: 9 - Number(rank) });
+  return { from: square(uci[0], uci[1]), to: square(uci[2], uci[3]) };
+}
+
+function stateFromMoves(moves) {
+  const next = R.createInitialState();
+  for (const uci of moves) {
+    const move = parseUci(uci);
+    const piece = R.pieceAt(next.pieces, move.from.row, move.from.col);
+    if (!piece || !R.legalMoves(next.pieces, piece).some(m => m.row === move.to.row && m.col === move.to.col)) {
+      throw new Error(`服务端棋谱无法重放：${uci}`);
+    }
+    R.applyMove(next, piece, move.to);
+  }
+  return next;
+}
+
+const onlineDialog = document.getElementById('onlineDialog');
+const onlineMessage = document.getElementById('onlineMessage');
+const roomCodeInput = document.getElementById('roomCode');
+const roomTicket = document.getElementById('roomTicket');
+const activeRoomCode = document.getElementById('activeRoomCode');
+const roomSeat = document.getElementById('roomSeat');
+const btnCreateRoom = document.getElementById('btnCreateRoom');
+const joinRoomForm = document.getElementById('joinRoomForm');
+
+function showOnlineDialog() {
+  onlineDialog.classList.add('show');
+  onlineDialog.setAttribute('aria-hidden', 'false');
+  onlineMessage.classList.remove('error');
+  if (online) showRoomTicket();
+  else roomTicket.hidden = true;
+}
+
+function hideOnlineDialog() {
+  onlineDialog.classList.remove('show');
+  onlineDialog.setAttribute('aria-hidden', 'true');
+}
+
+function showRoomTicket() {
+  if (!online) return;
+  roomTicket.hidden = false;
+  activeRoomCode.textContent = online.roomId;
+  const side = online.color === R.RED ? '红方' : '黑方';
+  roomSeat.textContent = `${side} · ${online.opponentConnected ? '敌军已入帐' : '等待敌军'}`;
+}
+
+function setOnlineBusy(busy) {
+  btnCreateRoom.disabled = busy;
+  joinRoomForm.querySelector('button').disabled = busy;
+}
+
+async function requestRoom(path) {
+  setOnlineBusy(true);
+  onlineMessage.classList.remove('error');
+  onlineMessage.textContent = '正在传递军令……';
+  try {
+    const response = await fetch(path, { method: 'POST', headers: { Accept: 'application/json' } });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || `请求失败（${response.status}）`);
+    connectOnline(payload);
+  } catch (error) {
+    onlineMessage.textContent = error.message || '联机军令传递失败';
+    onlineMessage.classList.add('error');
+    showOnlineDialog();
+  } finally {
+    setOnlineBusy(false);
+  }
+}
+
+function connectOnline(ticket) {
+  leaveOnline(false);
+  gameMode = 'online';
+  online = {
+    roomId: ticket.room_id,
+    token: ticket.token,
+    color: ticket.color,
+    revision: 0,
+    connected: false,
+    opponentConnected: false,
+    socket: null,
+    reconnectAttempt: 0,
+  };
+  sessionStorage.setItem(`chess-room-${online.roomId}`, JSON.stringify(ticket));
+  const url = new URL(location.href);
+  url.searchParams.set('room', online.roomId);
+  history.replaceState(null, '', url);
+  installGameState(R.createInitialState());
+  showRoomTicket();
+  openOnlineSocket();
+}
+
+function leaveOnline(clearUrl = true) {
+  clearTimeout(onlineReconnectTimer);
+  onlineReconnectTimer = null;
+  if (online?.socket) {
+    online.socket.onclose = null;
+    online.socket.close();
+  }
+  online = null;
+  onlineMovePending = false;
+  onlineEventQueue.length = 0;
+  if (clearUrl) {
+    const url = new URL(location.href);
+    url.searchParams.delete('room');
+    history.replaceState(null, '', url);
+  }
+}
+
+function openOnlineSocket() {
+  if (!online || gameMode !== 'online') return;
+  const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const socket = new WebSocket(`${scheme}//${location.host}/api/rooms/${online.roomId}/ws?token=${encodeURIComponent(online.token)}`);
+  online.socket = socket;
+  refreshBattleControls();
+  socket.addEventListener('open', () => {
+    if (!online || online.socket !== socket) return;
+    online.connected = true;
+    online.reconnectAttempt = 0;
+    refreshBattleControls();
+  });
+  socket.addEventListener('message', event => {
+    if (!online || online.socket !== socket) return;
+    try { handleOnlineEvent(JSON.parse(event.data)); }
+    catch (error) { battleHint(error.message || '联机消息解析失败', true); }
+  });
+  socket.addEventListener('close', () => {
+    if (!online || online.socket !== socket || gameMode !== 'online') return;
+    online.connected = false;
+    onlineMovePending = false;
+    refreshBattleControls();
+    battleHint('联机中断，正在重新连接……', true);
+    const delay = Math.min(8000, 700 * (2 ** online.reconnectAttempt++));
+    onlineReconnectTimer = setTimeout(openOnlineSocket, delay);
+  });
+}
+
+function handleOnlineEvent(event) {
+  if (!online) return;
+  if (event.type === 'snapshot') {
+    online.revision = event.revision;
+    online.color = event.color;
+    online.opponentConnected = event.opponent_connected;
+    onlineMovePending = false;
+    onlineEventQueue.length = 0;
+    installGameState(stateFromMoves(event.moves));
+    showRoomTicket();
+    setCameraForSide(online.color);
+    if (online.color === R.BLACK || online.opponentConnected) hideOnlineDialog();
+    battleHint(onlineHintText());
+    if (event.game_over) showOnlineResult(event);
+  } else if (event.type === 'presence') {
+    online.opponentConnected = online.color === R.RED ? event.black_connected : event.red_connected;
+    showRoomTicket();
+    if (online.opponentConnected) hideOnlineDialog();
+    refreshBattleControls();
+    battleHint(onlineHintText());
+  } else if (event.type === 'move') {
+    if (event.revision <= online.revision) return;
+    online.revision = event.revision;
+    onlineMovePending = false;
+    onlineEventQueue.push(event);
+    drainOnlineMoves();
+  } else if (event.type === 'restarted') {
+    online.revision = event.revision;
+    onlineMovePending = false;
+    onlineEventQueue.length = 0;
+    installGameState(R.createInitialState());
+    battleHint('双方军令已齐，新局开始');
+  } else if (event.type === 'restart_pending') {
+    const mine = event.color === online.color;
+    battleHint(mine ? '已请求重开，等待对手同意' : '对手请求重开，点击“重开”同意');
+  } else if (event.type === 'error') {
+    onlineMovePending = false;
+    battleHint(event.message || '联机操作失败', true);
+    if (event.code === 'stale_revision') {
+      online.socket?.close();
+    } else if (event.code === 'unauthorized' || event.code === 'room_not_found') {
+      online.socket.onclose = null;
+      online.socket.close();
+      online.connected = false;
+      onlineMessage.textContent = event.message || '房间凭证已经失效';
+      onlineMessage.classList.add('error');
+      showOnlineDialog();
+    }
+  }
+  refreshBattleControls();
+}
+
+function drainOnlineMoves() {
+  const event = onlineEventQueue[0];
+  if (!event) return;
+  if (actionPhase !== 'idle' || tweens.length) {
+    setTimeout(drainOnlineMoves, 80);
+    return;
+  }
+  onlineEventQueue.shift();
+  const piece = R.pieceAt(state.pieces, event.from.row, event.from.col);
+  if (!piece) {
+    battleHint('本地棋盘与房间不同步，正在重连', true);
+    online.socket?.close();
+    return;
+  }
+  doMove(piece, event.to);
+  setTimeout(drainOnlineMoves, 80);
+}
+
+function showOnlineResult(event) {
+  showResult({ winner: event.winner, check: event.check });
+}
+
+function sendOnlineMove(piece, to) {
+  if (!online?.connected || online.socket?.readyState !== WebSocket.OPEN) {
+    battleHint('尚未连接到联机军帐', true);
+    return;
+  }
+  onlineMovePending = true;
+  online.socket.send(JSON.stringify({
+    type: 'move',
+    uci: moveToUci({ from: piece, to }),
+    revision: online.revision,
+  }));
+  selected = null;
+  selectedMoves = [];
+  markers.clear();
+  battleHint('军令已发出 · 等待服务端裁决');
+}
+
+async function probeAi() {
+  const engine = aiEngine;
+  const difficulty = aiDifficulty;
+  try {
+    if (engine === 'godogpaw') {
+      await probeWasmAi();
+      if (gameMode !== 'ai' || engine !== aiEngine || difficulty !== aiDifficulty) return false;
+      refreshBattleControls('ready');
+      return true;
+    }
+    const response = await fetch('/api/ai/status', { headers: { Accept: 'application/json' } });
+    if (!response.ok) throw new Error('Pikafish 需要 Rust 服务');
+    const status = await response.json();
+    if (gameMode !== 'ai' || engine !== aiEngine || difficulty !== aiDifficulty) return false;
+    refreshBattleControls(status.available ? 'ready' : 'error');
+    if (!status.available) battleHint('未找到 Pikafish，请配置 PIKAFISH_PATH', true);
+    return status.available;
+  } catch (error) {
+    if (gameMode !== 'ai' || engine !== aiEngine || difficulty !== aiDifficulty) return false;
+    refreshBattleControls('error');
+    battleHint(error.message || `${aiEngineName(engine)} 不可用`, true);
+    return false;
+  }
+}
+
+async function maybeRequestAiMove() {
+  if (gameMode !== 'ai' || state.turn !== R.BLACK || gameOver || aiThinking) return;
+  const requestVersion = ++aiRequestVersion;
+  const engine = aiEngine;
+  const difficulty = aiDifficulty;
+  const moves = state.history.map(moveToUci);
+  aiThinking = true;
+  actionPhase = 'ai-thinking';
+  refreshBattleControls();
+  battleHint('黑方军师正在推演……');
+  try {
+    let result;
+    if (engine === 'pikafish') {
+      const response = await fetch('/api/ai/move', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ moves, difficulty }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || `AI 请求失败（${response.status}）`);
+      result = { from: payload.from, to: payload.to };
+    } else {
+      result = uciToMove(await searchWasmAi(moves, difficulty));
+    }
+    if (requestVersion !== aiRequestVersion || gameMode !== 'ai' || engine !== aiEngine || difficulty !== aiDifficulty) return;
+    const { from, to } = result;
+    const piece = state.pieces.find(p => p.row === from.row && p.col === from.col && p.color === R.BLACK);
+    const legal = piece && R.legalMoves(state.pieces, piece)
+      .some(move => move.row === to.row && move.col === to.col);
+    if (!piece || !legal) throw new Error('AI 返回的棋步与前端状态不一致');
+    aiThinking = false;
+    actionPhase = 'idle';
+    refreshBattleControls('ready');
+    doMove(piece, to);
+  } catch (error) {
+    if (requestVersion !== aiRequestVersion) return;
+    aiThinking = false;
+    actionPhase = 'idle';
+    refreshBattleControls('error');
+    battleHint(error.message || '军师暂时无法落子', true);
+  }
 }
 
 function missing(color, present) {
@@ -237,6 +639,22 @@ function showResult(status) {
   document.getElementById('resultText').style.color = redWin ? '#ff6a55' : '#7fa8ff';
   document.getElementById('resultSub').textContent = status.check ? '绝杀无解' : '困毙无棋';
   document.getElementById('overlay').classList.add('show');
+}
+
+function legalResponsePieces() {
+  return state.pieces.filter(piece => piece.color === state.turn && R.legalMoves(state.pieces, piece).length);
+}
+
+function showCheckResponses(prefix = '将军') {
+  const responses = legalResponsePieces();
+  if (!responses.length) {
+    showResult(R.gameStatus(state));
+    return responses;
+  }
+  markers.responsePieces(responses);
+  const names = [...new Set(responses.map(piece => R.GLYPH[piece.color][piece.type]))].join('、');
+  battleHint(`${prefix} · 仅绿色高亮棋子可以解将：${names}`);
+  return responses;
 }
 
 // ---------- 音效 (WebAudio 合成) ----------
@@ -297,14 +715,14 @@ function animatePosition(owner, node, axis, to, dur = 0.18, onDone = null, delay
 }
 function setOpacity(mesh, v) {
   mesh.traverse(o => {
-    if (o.isMesh) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { m.opacity = v; });
+    if (o.isMesh || o.isSprite) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { m.opacity = v; });
   });
 }
 function makeFadable(mesh) {
   if (mesh.userData.hasFadableMaterials) return;
-  const ownedMaterials = [];
+  const ownedMaterials = mesh.userData.ownedMaterials || [];
   mesh.traverse(o => {
-    if (o.isMesh) {
+    if (o.isMesh || o.isSprite) {
       o.material = Array.isArray(o.material) ? o.material.map(m => m.clone()) : o.material.clone();
       (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => {
         m.transparent = true;
@@ -550,7 +968,9 @@ function doMove(piece, to) {
     } else if (status.check) {
       sndCheck();
       showCheckBanner();
+      if (isHumanTurn()) showCheckResponses();
     }
+    if (!status.over) maybeRequestAiMove();
   };
 
   // 普通移动: 跳跃落位
@@ -744,15 +1164,21 @@ renderer.domElement.addEventListener('pointerup', ev => {
   downPos = null;
   if (dx * dx + dy * dy > 36) return; // 拖拽视角不算点击
   if (gameOver || actionPhase !== 'idle' || tweens.length) return;
+  const currentStatus = R.gameStatus(state);
+  if (currentStatus.over) {
+    showResult(currentStatus);
+    return;
+  }
 
   const { marker, pieceRoot } = castAt(ev);
   if (marker) {
-    doMove(selected, marker.userData.moveTo);
+    if (gameMode === 'online') sendOnlineMove(selected, marker.userData.moveTo);
+    else doMove(selected, marker.userData.moveTo);
     return;
   }
   if (pieceRoot) {
     const piece = state.pieces.find(p => p.id === pieceRoot.userData.pieceId);
-    if (piece && piece.color === state.turn) {
+    if (piece && piece.color === state.turn && isHumanTurn()) {
       selected = piece;
       selectedMoves = R.legalMoves(state.pieces, piece);
       markers.clear();
@@ -760,19 +1186,34 @@ renderer.domElement.addEventListener('pointerup', ev => {
       markers.selectRing(piece.row, piece.col);
       markers.showMoves(selectedMoves, state.pieces, R.pieceAt);
       sndSelect();
-      hint.textContent = `${R.GLYPH[piece.color][piece.type]} · 可走 ${selectedMoves.length} 处`;
+      if (selectedMoves.length) {
+        hint.textContent = `${R.GLYPH[piece.color][piece.type]} · 可走 ${selectedMoves.length} 处`;
+      } else if (R.isInCheck(state.pieces, piece.color)) {
+        showCheckResponses(`${R.GLYPH[piece.color][piece.type]}无法解将`);
+      } else if (R.pseudoMoves(state.pieces, piece).length) {
+        hint.textContent = `${R.GLYPH[piece.color][piece.type]} · 此棋被牵制，移动会暴露将帅`;
+      } else {
+        hint.textContent = `${R.GLYPH[piece.color][piece.type]} · 当前无可走位置`;
+      }
       return;
     }
     // 点击敌子: 若是合法吃子目标则直接吃
     if (piece && selected) {
       const m = selectedMoves.find(mv => mv.row === piece.row && mv.col === piece.col);
       if (m) {
-        doMove(selected, m);
+        if (gameMode === 'online') sendOnlineMove(selected, m);
+        else doMove(selected, m);
         return;
       }
     }
   }
-  if (selected) { selected = null; markers.clear(); hint.textContent = '点击己方棋子查看可走位置'; }
+  if (selected) {
+    selected = null;
+    markers.clear();
+    if (state.lastMove) markers.lastMoveMarks(state.lastMove.from, state.lastMove.to);
+    if (isHumanTurn() && R.isInCheck(state.pieces, state.turn)) showCheckResponses();
+    else hint.textContent = '点击己方棋子查看可走位置';
+  }
 });
 
 let hoverFrame = 0;
@@ -787,7 +1228,7 @@ renderer.domElement.addEventListener('pointermove', ev => {
     let hover = !!marker;
     if (!hover && pieceRoot) {
       const piece = state.pieces.find(p => p.id === pieceRoot.userData.pieceId);
-      hover = piece && (piece.color === state.turn ||
+      hover = piece && ((piece.color === state.turn && isHumanTurn()) ||
         (selected && selectedMoves.some(m => m.row === piece.row && m.col === piece.col)));
     }
     renderer.domElement.style.cursor = hover ? 'pointer' : 'grab';
@@ -799,27 +1240,89 @@ renderer.domElement.addEventListener('pointerleave', () => {
 });
 
 // ---------- 按钮 ----------
-document.getElementById('btnRestart').addEventListener('click', resetGame);
-document.getElementById('btnAgain').addEventListener('click', resetGame);
+function requestRestart() {
+  if (gameMode === 'online') {
+    if (online?.socket?.readyState === WebSocket.OPEN) {
+      online.socket.send(JSON.stringify({ type: 'restart' }));
+    } else {
+      battleHint('联机尚未恢复，无法发送重开军令', true);
+    }
+    return;
+  }
+  resetGame();
+}
+
+document.getElementById('btnRestart').addEventListener('click', requestRestart);
+document.getElementById('btnAgain').addEventListener('click', requestRestart);
+async function selectGameMode(nextMode) {
+  if (DEMO_TYPES.has(demoType) || !['ai', 'local', 'online'].includes(nextMode)) return;
+  if (nextMode === gameMode) {
+    if (nextMode === 'online') showOnlineDialog();
+    return;
+  }
+  hideOnlineDialog();
+  if (gameMode === 'online') leaveOnline();
+  gameMode = nextMode;
+  resetGame();
+  if (nextMode === 'ai') {
+    battleHint('你执红先行 · 黑方由电脑应战');
+    await probeAi();
+  } else if (nextMode === 'local') {
+    battleHint('已切换为本地双人对弈');
+  } else {
+    showOnlineDialog();
+    battleHint('请选择创建军帐或输入编号加入');
+  }
+}
+for (const button of modeButtons) {
+  button.addEventListener('click', () => void selectGameMode(button.dataset.mode));
+}
+aiEngineSelect.addEventListener('change', async () => {
+  if (!['godogpaw', 'pikafish'].includes(aiEngineSelect.value)) return;
+  aiRequestVersion++;
+  resetWasmAi();
+  aiEngine = aiEngineSelect.value;
+  refreshBattleControls();
+  battleHint(`人机引擎切换为：${aiEngineName()}`);
+  await probeAi();
+});
+aiDifficultySelect.addEventListener('change', async () => {
+  if (!Object.hasOwn(difficultyNames, aiDifficultySelect.value)) return;
+  aiRequestVersion++;
+  aiDifficulty = aiDifficultySelect.value;
+  refreshBattleControls();
+  battleHint(`敌军谋略调整为：${difficultyNames[aiDifficulty]}`);
+  await probeAi();
+});
 document.getElementById('btnUndo').addEventListener('click', () => {
   if (actionPhase !== 'idle' || tweens.length) return;
-  const h = R.undo(state);
-  if (!h) return;
+  if (gameMode === 'online') {
+    battleHint('联机对局暂不支持悔棋');
+    return;
+  }
+  const plies = gameMode === 'ai' && state.turn === R.RED ? 2 : 1;
+  let undone = false;
   gameOver = false;
   document.getElementById('overlay').classList.remove('show');
-  const mesh = meshById.get(h.pieceId);
-  restoreFacing(mesh);
-  const back = squareToWorld(h.from.row, h.from.col);
-  mesh.position.set(back.x, back.y, back.z);
-  if (h.captured) {
-    const cm = meshById.get(h.captured.id);
-    setOpacity(cm, 1);
-    cm.rotation.set(0, h.captured.color === R.RED ? Math.PI : 0, 0); // 复位击飞翻滚
-    const cp = squareToWorld(h.captured.row, h.captured.col);
-    cm.position.set(cp.x, cp.y, cp.z);
-    piecesGroup.add(cm);
-    if (!pieceHitAreas.includes(cm.userData.hitArea)) pieceHitAreas.push(cm.userData.hitArea);
+  for (let i = 0; i < plies; i++) {
+    const h = R.undo(state);
+    if (!h) break;
+    undone = true;
+    const mesh = meshById.get(h.pieceId);
+    restoreFacing(mesh);
+    const back = squareToWorld(h.from.row, h.from.col);
+    mesh.position.set(back.x, back.y, back.z);
+    if (h.captured) {
+      const cm = meshById.get(h.captured.id);
+      setOpacity(cm, 1);
+      cm.rotation.set(0, h.captured.color === R.RED ? Math.PI : 0, 0); // 复位击飞翻滚
+      const cp = squareToWorld(h.captured.row, h.captured.col);
+      cm.position.set(cp.x, cp.y, cp.z);
+      piecesGroup.add(cm);
+      if (!pieceHitAreas.includes(cm.userData.hitArea)) pieceHitAreas.push(cm.userData.hitArea);
+    }
   }
+  if (!undone) return;
   selected = null;
   actionPhase = 'idle';
   markers.clear();
@@ -828,9 +1331,13 @@ document.getElementById('btnUndo').addEventListener('click', () => {
 });
 
 let flipped = false;
-document.getElementById('btnCam').addEventListener('click', () => {
+function setCameraForSide(color) {
+  setCameraFlipped(color === R.BLACK);
+}
+
+function setCameraFlipped(nextFlipped = !flipped) {
   if (generalCinematic || actionPhase !== 'idle') return;
-  flipped = !flipped;
+  flipped = nextFlipped;
   const t = { t: 0 };
   const from = camera.position.clone();
   const to = new THREE.Vector3(0, 21, flipped ? -34 : 34);
@@ -840,6 +1347,36 @@ document.getElementById('btnCam').addEventListener('click', () => {
     if (t.t < 1) requestAnimationFrame(step);
   };
   step();
+}
+
+document.getElementById('btnCam').addEventListener('click', () => setCameraFlipped());
+
+document.getElementById('btnOnlineClose').addEventListener('click', hideOnlineDialog);
+document.getElementById('btnBackToAi').addEventListener('click', () => void selectGameMode('ai'));
+onlineDialog.addEventListener('click', event => {
+  if (event.target === onlineDialog) hideOnlineDialog();
+});
+btnCreateRoom.addEventListener('click', () => requestRoom('/api/rooms'));
+joinRoomForm.addEventListener('submit', event => {
+  event.preventDefault();
+  const roomId = roomCodeInput.value.trim().toUpperCase();
+  if (!/^[A-Z0-9]{6}$/.test(roomId)) {
+    onlineMessage.textContent = '请输入 6 位军帐编号';
+    onlineMessage.classList.add('error');
+    return;
+  }
+  requestRoom(`/api/rooms/${encodeURIComponent(roomId)}/join`);
+});
+document.getElementById('btnCopyInvite').addEventListener('click', async () => {
+  if (!online) return;
+  const invite = new URL(location.href);
+  invite.searchParams.set('room', online.roomId);
+  try {
+    await navigator.clipboard.writeText(invite.toString());
+    battleHint(`军帐 ${online.roomId} 的邀请链接已复制`);
+  } catch (_) {
+    onlineMessage.textContent = invite.toString();
+  }
 });
 
 // ---------- 渲染循环 ----------
@@ -885,6 +1422,8 @@ function updateScene(dt, renderFrame = true) {
 
   // 待机呼吸 + 选中浮动
   for (const mesh of piecesGroup.children) {
+    const badge = mesh.userData.identityBadge;
+    if (badge) badge.visible = !generalCinematic;
     if (tweens.some(tw => tw.mesh === mesh)) continue;
     const fig = mesh.userData.figure;
     if (fig) {
@@ -892,6 +1431,13 @@ function updateScene(dt, renderFrame = true) {
       fig.position.y = 0.34 + Math.sin(time * 1.3 + mesh.userData.phase) * 0.015;
     }
     const isSel = selected && mesh.userData.pieceId === selected.id;
+    if (badge) {
+      const pulse = isSel ? 1.14 + Math.sin(time * 4) * 0.035 : 1;
+      const targetScale = badge.userData.baseScale * pulse;
+      badge.scale.x += (targetScale - badge.scale.x) * Math.min(dt * 10, 1);
+      badge.scale.y += (targetScale - badge.scale.y) * Math.min(dt * 10, 1);
+      badge.material.opacity += ((isSel ? 1 : 0.92) - badge.material.opacity) * Math.min(dt * 9, 1);
+    }
     const baseY = squareToWorld(0, 0).y;
     if (isSel) {
       mesh.position.y = baseY + 0.18 + Math.sin(time * 4) * 0.05;
@@ -941,6 +1487,23 @@ function updateScene(dt, renderFrame = true) {
 
 let deterministicFrameRendered = false;
 let lastAnimationFrame = -Infinity;
+
+function restoreRenderingAfterPause() {
+  clock.start();
+  lastAnimationFrame = -Infinity;
+  renderer.shadowMap.needsUpdate = true;
+  requestAnimationFrame(() => {
+    renderer.shadowMap.needsUpdate = true;
+    renderer.render(scene, camera);
+  });
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) clock.stop();
+  else restoreRenderingAfterPause();
+});
+canvas.addEventListener('webglcontextrestored', restoreRenderingAfterPause);
+
 function animate(now = performance.now()) {
   requestAnimationFrame(animate);
   const minFrameInterval = window.innerWidth < 760 ? 1000 / 30 : 1000 / 60;
@@ -974,6 +1537,17 @@ window.render_game_to_text = () => JSON.stringify({
   phase: actionPhase,
   lastAttackType,
   gameOver,
+  gameMode,
+  aiEngine,
+  aiDifficulty,
+  aiThinking,
+  online: online ? {
+    roomId: online.roomId,
+    color: online.color,
+    connected: online.connected,
+    opponentConnected: online.opponentConnected,
+    revision: online.revision,
+  } : null,
   attack: DEMO_TYPES.has(demoType) ? {
     type: lastAttackType || demoType,
     stage: actionPhase.includes('-') ? actionPhase.slice(actionPhase.indexOf('-') + 1) : actionPhase,
@@ -992,6 +1566,7 @@ window.render_game_to_text = () => JSON.stringify({
   modelAssets: window.__tripoModelCount || 0,
   selected: selected ? { id: selected.id, type: selected.type, row: selected.row, col: selected.col } : null,
   legalTargets: selectedMoves.map(m => ({ row: m.row, col: m.col })),
+  responseHintCount: markers.group.children.filter(child => child.userData.isResponseHint).length,
   pieces: state.pieces.map(p => ({ id: p.id, color: p.color, type: p.type, row: p.row, col: p.col })),
 });
 
@@ -1001,13 +1576,48 @@ window.advanceTime = ms => {
   for (let i = 0; i < steps; i++) updateScene(1 / 60, i === steps - 1);
 };
 
+window.install_test_state = nextState => {
+  if (!deterministicTestMode || !nextState?.pieces || !nextState.turn) return false;
+  installGameState({
+    pieces: nextState.pieces.map(piece => ({ ...piece })),
+    turn: nextState.turn,
+    history: [],
+    lastMove: null,
+  });
+  const status = R.gameStatus(state);
+  if (status.over) showResult(status);
+  else if (status.check) showCheckResponses();
+  updateScene(0);
+  return true;
+};
+
 const bootText = document.getElementById('bootText');
 window.__tripoModelCount = await preloadPieceModels((completed, total) => {
   if (bootText) bootText.textContent = `正在点将 · 重塑战阵 ${completed}/${total}`;
 });
 buildAllPieces();
 refreshHUD();
+refreshBattleControls();
 animate();
+
+if (!DEMO_TYPES.has(demoType)) {
+  const invitedRoom = pageParams.get('room')?.trim().toUpperCase();
+  if (invitedRoom && /^[A-Z0-9]{6}$/.test(invitedRoom)) {
+    roomCodeInput.value = invitedRoom;
+    let stored = null;
+    try { stored = JSON.parse(sessionStorage.getItem(`chess-room-${invitedRoom}`)); }
+    catch (_) { /* 损坏的会话记录按新玩家处理 */ }
+    if (stored?.room_id === invitedRoom && stored?.token) connectOnline(stored);
+    else {
+      gameMode = 'online';
+      resetGame();
+      showOnlineDialog();
+      requestRoom(`/api/rooms/${encodeURIComponent(invitedRoom)}/join`);
+    }
+  } else {
+    probeAi();
+  }
+}
 
 // 七类攻击演示：?demo=general|advisor|elephant|horse|chariot|cannon|soldier
 if (DEMO_TYPES.has(demoType)) {

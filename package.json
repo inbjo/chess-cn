@@ -3,9 +3,10 @@
   "version": "1.0.0",
   "type": "module",
   "private": true,
+  "license": "GPL-3.0-or-later",
   "scripts": {
-    "test": "node test/rules.test.js",
-    "check": "node --check js/main.js && node --check js/model-assets.js && node --check js/pieces.js && node --check js/board3d.js && node --check js/fx.js && npm test",
+    "test": "node test/rules.test.js && node test/ai-engine.test.js",
+    "check": "node --check js/main.js && node --check js/ai-engine.js && node --check js/ai-worker.js && node --check js/model-assets.js && node --check js/pieces.js && node --check js/board3d.js && node --check js/fx.js && npm test",
     "serve": "python3 -m http.server 8000"
   }
 }

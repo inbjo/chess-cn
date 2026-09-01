@@ -1,8 +1,8 @@
-// 拟人化棋子建模：Tripo 角色 + Three.js 汉字底座；基础几何角色保留为加载失败回退。
-// 每个棋子 = 底座(带汉字) + 角色。角色正面朝 +z，由 main.js 按阵营转向。
+// 拟人化棋子建模：Tripo 角色 + Three.js 汉字底座 + 头顶身份令牌；基础几何角色保留为加载失败回退。
+// 每个棋子 = 汉字底座 + 角色 + 镜头朝向身份令牌。角色正面朝 +z，由 main.js 按阵营转向。
 import * as THREE from 'three';
-import { GLYPH } from './rules.js';
-import { createGeneratedFigure } from './model-assets.js';
+import { GLYPH } from './rules.js?v=20260901.3';
+import { createGeneratedFigure } from './model-assets.js?v=20260901.3';
 
 const SIDE = {
   red: {
@@ -21,6 +21,7 @@ const MATERIAL_CACHE = new Map();
 const GEOMETRY_CACHE = new Map();
 const GLYPH_TEXTURE_CACHE = new Map();
 const GLYPH_MATERIAL_CACHE = new Map();
+const BADGE_TEXTURE_CACHE = new Map();
 const MERGED_FIGURE_CACHE = new Map();
 const HIT_MATERIAL = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false });
 
@@ -136,7 +137,6 @@ const sph = (r, mt, x, y, z, rot, w = 16, h = 12) => part(geometry(`s:${r}:${w}:
 const cone = (r, h, mt, x, y, z, rot, seg = 16) => part(geometry(`n:${r}:${h}:${seg}`, () => new THREE.ConeGeometry(r, h, seg)), mt, x, y, z, rot);
 const torus = (r, t, mt, x, y, z, rot, arc = Math.PI * 2) => part(geometry(`t:${r}:${t}:${arc}`, () => new THREE.TorusGeometry(r, t, 10, 24, arc)), mt, x, y, z, rot);
 
-// ---- 底座: 圆柱 + 顶面汉字贴片 + 描金环 ----
 function glyphTexture(text, bg, ink, ring) {
   const key = `${text}:${bg}:${ink}:${ring}`;
   if (GLYPH_TEXTURE_CACHE.has(key)) return GLYPH_TEXTURE_CACHE.get(key);
@@ -195,6 +195,96 @@ function glyphMaterial(color, type) {
   return GLYPH_MATERIAL_CACHE.get(key);
 }
 
+// ---- 头顶身份令牌: Sprite 始终正对镜头，混战中也不会被角色遮挡 ----
+function identityBadgeTexture(text, color) {
+  const key = `${color}:${text}`;
+  if (BADGE_TEXTURE_CACHE.has(key)) return BADGE_TEXTURE_CACHE.get(key);
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const ctx = c.getContext('2d');
+  const red = color === 'red';
+  const outer = red ? '#ffd16f' : '#c8dcff';
+  const inner = red ? '#6f1713' : '#162a45';
+  const glow = red ? 'rgba(255, 93, 57, 0.72)' : 'rgba(89, 153, 255, 0.7)';
+  const ink = red ? '#fff2bf' : '#f2f7ff';
+
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
+  ctx.shadowBlur = 20;
+  ctx.shadowOffsetY = 9;
+  ctx.fillStyle = 'rgba(8, 5, 3, 0.88)';
+  ctx.beginPath();
+  ctx.arc(128, 126, 96, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.shadowColor = glow;
+  ctx.shadowBlur = 24;
+  ctx.shadowOffsetY = 0;
+  const rim = ctx.createLinearGradient(52, 44, 204, 214);
+  rim.addColorStop(0, '#fff1b0');
+  rim.addColorStop(0.38, outer);
+  rim.addColorStop(1, red ? '#9a5a24' : '#667f9f');
+  ctx.fillStyle = rim;
+  ctx.beginPath();
+  ctx.arc(128, 126, 91, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.shadowColor = 'transparent';
+  const face = ctx.createRadialGradient(101, 88, 9, 128, 126, 84);
+  face.addColorStop(0, red ? '#aa3b27' : '#35567e');
+  face.addColorStop(0.58, inner);
+  face.addColorStop(1, red ? '#390b0a' : '#091322');
+  ctx.fillStyle = face;
+  ctx.beginPath();
+  ctx.arc(128, 126, 79, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = red ? 'rgba(255, 222, 142, 0.54)' : 'rgba(219, 235, 255, 0.58)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(128, 126, 69, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.shadowColor = glow;
+  ctx.shadowBlur = 8;
+  ctx.fillStyle = ink;
+  ctx.font = '900 126px "Ma Shan Zheng", "STKaiti", "Noto Serif SC", serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 128, 132);
+
+  // 令牌下方的小铆钉让标识更像军阵器物，而不是普通 UI 气泡。
+  ctx.shadowColor = 'transparent';
+  ctx.fillStyle = outer;
+  ctx.beginPath();
+  ctx.arc(128, 231, 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  BADGE_TEXTURE_CACHE.set(key, tex);
+  return tex;
+}
+
+function identityBadge(color, type) {
+  const material = new THREE.SpriteMaterial({
+    map: identityBadgeTexture(GLYPH[color][type], color),
+    transparent: true,
+    depthTest: false,
+    depthWrite: false,
+    toneMapped: false,
+    sizeAttenuation: false,
+  });
+  const badge = new THREE.Sprite(material);
+  // 非透视缩放保持约 30–40px 的屏幕尺寸，远端棋子依然可辨识。
+  badge.scale.set(0.03, 0.03, 1);
+  badge.renderOrder = 1000;
+  badge.frustumCulled = false;
+  badge.userData.identityBadge = true;
+  badge.userData.baseScale = 0.03;
+  return badge;
+}
+
+// ---- 底座: 阵营色金属盘 + 顶面汉字 + 描金环 ----
 function pedestal(color, type) {
   const s = SIDE[color];
   const g = new THREE.Group();
@@ -206,7 +296,6 @@ function pedestal(color, type) {
   body.position.y = 0.17;
   body.castShadow = body.receiveShadow = true;
   g.add(body);
-  // 顶面汉字贴片: rotation.z = π 使字形正对持子方
   const face = new THREE.Mesh(
     geometry('pedestal:face', () => new THREE.CircleGeometry(0.97, 28)),
     glyphMaterial(color, type)
@@ -623,6 +712,11 @@ export function createPieceMesh(type, color) {
   if (!generatedFigure) batchStaticFigure(figure, type, color, [rig.weapon]);
   figure.position.y = 0.34;
   root.add(figure);
+  root.updateMatrixWorld(true);
+  const figureBox = new THREE.Box3().setFromObject(figure);
+  const badge = identityBadge(color, type);
+  badge.position.y = THREE.MathUtils.clamp(figureBox.max.y + 0.28, 2.85, 3.25);
+  root.add(badge);
   const hitArea = new THREE.Mesh(
     geometry('hit:cylinder', () => new THREE.CylinderGeometry(1.05, 1.05, 3.2, 12)),
     HIT_MATERIAL
@@ -633,5 +727,7 @@ export function createPieceMesh(type, color) {
   root.userData.figure = figure;
   root.userData.rig = rig;
   root.userData.hitArea = hitArea;
+  root.userData.identityBadge = badge;
+  root.userData.ownedMaterials = [badge.material];
   return root;
 }

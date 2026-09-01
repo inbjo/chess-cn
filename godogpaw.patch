@@ -1,0 +1,24 @@
+diff --git a/engine/positionng.go b/engine/positionng.go
+--- a/engine/positionng.go
++++ b/engine/positionng.go
+@@ -252,0 +253,3 @@ func (pos *PositionNG) Legal(m MoveNG) bool {
++	if TypeOf(pos.PieceOn(to)) == KING {
++		return false
++	}
+diff --git a/engine/king_capture_test.go b/engine/king_capture_test.go
+new file mode 100644
+--- /dev/null
++++ b/engine/king_capture_test.go
+@@ -0,0 +1,12 @@
++package engine
++
++import "testing"
++
++func TestKingCaptureIsIllegal(t *testing.T) {
++	var pos PositionNG
++	pos.Set("3k5/3R5/9/9/9/9/8p/9/9/4K4 b - - 0 1")
++	pos.SideToMove = WHITE
++	if pos.Legal(MakeMove(SQ_D8, SQ_D9)) {
++		t.Fatal("capturing the opposing king must not be legal")
++	}
++}

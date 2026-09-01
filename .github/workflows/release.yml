@@ -1,0 +1,191 @@
+name: Build and release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PIKAFISH_TAG: Pikafish-2026-01-02
+  PIKAFISH_COMMIT: ce0679e00ee196f7ba17f6ec18941b9a5036f8cf
+  PIKAFISH_RELEASE_FILE: Pikafish.2026-01-02.7z
+  PIKAFISH_RELEASE_SHA256: 84257063905615919fb4ee6a70273a94843bb6ec04c45e3ac706098838bc1a49
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: cargo fmt --all --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test --locked
+      - run: npm run check
+
+  prepare-pikafish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: official-pikafish/Pikafish
+          ref: ${{ env.PIKAFISH_TAG }}
+          path: upstream/source
+          fetch-depth: 1
+      - name: Download fixed Pikafish release and corresponding source
+        run: |
+          test "$(git -C upstream/source rev-parse HEAD)" = "${PIKAFISH_COMMIT}"
+          mkdir -p upstream/release
+          curl --fail --location --retry 3 \
+            "https://github.com/official-pikafish/Pikafish/releases/download/${PIKAFISH_TAG}/${PIKAFISH_RELEASE_FILE}" \
+            --output "upstream/${PIKAFISH_RELEASE_FILE}"
+          echo "${PIKAFISH_RELEASE_SHA256}  upstream/${PIKAFISH_RELEASE_FILE}" | sha256sum --check
+          7z x -y "upstream/${PIKAFISH_RELEASE_FILE}" -o"upstream/release" >/dev/null
+          git -C upstream/source archive --format=tar.gz \
+            --prefix="Pikafish-${PIKAFISH_TAG}/" \
+            --output="../Pikafish-${PIKAFISH_TAG}-source.tar.gz" HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pikafish-upstream
+          path: |
+            upstream/release
+            upstream/Pikafish-${{ env.PIKAFISH_TAG }}-source.tar.gz
+          retention-days: 1
+
+  build:
+    needs: [test, prepare-pikafish]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: chess-cn-linux-x86_64
+            runner: ubuntu-24.04
+            rust_target: x86_64-unknown-linux-gnu
+            server: chess-cn-server
+            engine_source: release/Linux/pikafish-sse41-popcnt
+            engine_arch: ""
+            engine_compiler: ""
+            engine_name: pikafish
+            archive: tar.gz
+          - package: chess-cn-linux-aarch64
+            runner: ubuntu-24.04-arm
+            rust_target: aarch64-unknown-linux-gnu
+            server: chess-cn-server
+            engine_source: ""
+            engine_arch: armv8
+            engine_compiler: gcc
+            engine_name: pikafish
+            archive: tar.gz
+          - package: chess-cn-windows-x86_64
+            runner: windows-2025
+            rust_target: x86_64-pc-windows-msvc
+            server: chess-cn-server.exe
+            engine_source: release/Windows/pikafish-sse41-popcnt.exe
+            engine_arch: ""
+            engine_compiler: ""
+            engine_name: pikafish.exe
+            archive: zip
+          - package: chess-cn-macos-x86_64
+            runner: macos-15-intel
+            rust_target: x86_64-apple-darwin
+            server: chess-cn-server
+            engine_source: ""
+            engine_arch: x86-64-sse41-popcnt
+            engine_compiler: clang
+            engine_name: pikafish
+            archive: tar.gz
+          - package: chess-cn-macos-aarch64
+            runner: macos-15
+            rust_target: aarch64-apple-darwin
+            server: chess-cn-server
+            engine_source: release/MacOS/pikafish-apple-silicon
+            engine_arch: ""
+            engine_compiler: ""
+            engine_name: pikafish
+            archive: tar.gz
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: pikafish-upstream
+          path: upstream
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+      - name: Build embedded Rust server
+        shell: bash
+        run: cargo build --release --locked --target "${{ matrix.rust_target }}"
+      - name: Use official Pikafish binary
+        if: matrix.engine_source != ''
+        shell: bash
+        run: cp "upstream/${{ matrix.engine_source }}" "upstream/${{ matrix.engine_name }}"
+      - name: Build Pikafish for target architecture
+        if: matrix.engine_arch != ''
+        shell: bash
+        run: |
+          mkdir -p upstream/source
+          tar -xzf "upstream/Pikafish-${PIKAFISH_TAG}-source.tar.gz" -C upstream/source --strip-components=1
+          cp upstream/release/pikafish.nnue upstream/source/src/pikafish.nnue
+          make -C upstream/source/src -j2 build \
+            ARCH="${{ matrix.engine_arch }}" COMP="${{ matrix.engine_compiler }}"
+          cp upstream/source/src/pikafish "upstream/${{ matrix.engine_name }}"
+      - name: Package application, engine, NNUE and licenses
+        shell: bash
+        run: |
+          mkdir -p dist
+          if [[ "${{ runner.os }}" != "Windows" ]]; then
+            chmod +x "target/${{ matrix.rust_target }}/release/${{ matrix.server }}" \
+              "upstream/${{ matrix.engine_name }}"
+          fi
+          ./scripts/package-release.sh \
+            "${{ matrix.package }}" \
+            "target/${{ matrix.rust_target }}/release/${{ matrix.server }}" \
+            "upstream/${{ matrix.engine_name }}" \
+            upstream/release dist "${{ matrix.archive }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.package }}
+          path: dist/${{ matrix.package }}.${{ matrix.archive }}
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: chess-cn-*
+          path: release-assets
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: pikafish-upstream
+          path: upstream
+      - name: Add corresponding source and checksums
+        run: |
+          cp "upstream/Pikafish-${PIKAFISH_TAG}-source.tar.gz" release-assets/
+          cd release-assets
+          sha256sum * > SHA256SUMS
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" release-assets/* \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes \
+            --verify-tag

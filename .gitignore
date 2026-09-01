@@ -1,3 +1,7 @@
 progress.md
 output/
 .DS_Store
+target/
+dist/
+.release-cache/
+.playwright-mcp/

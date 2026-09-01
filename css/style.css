@@ -25,10 +25,11 @@ html, body {
 }
 #scene:active { cursor: grabbing; }
 
-.hud-top, #panel, #hint, .demo-trigger { transition: opacity 0.18s ease, visibility 0.18s ease; }
+.hud-top, #panel, #hint, .battle-controls, .demo-trigger { transition: opacity 0.18s ease, visibility 0.18s ease; }
 body.general-cinematic-active .hud-top,
 body.general-cinematic-active #panel,
 body.general-cinematic-active #hint,
+body.general-cinematic-active .battle-controls,
 body.general-cinematic-active .demo-trigger {
   opacity: 0;
   visibility: hidden;
@@ -189,6 +190,242 @@ body.general-cinematic-active .demo-trigger {
   box-shadow: 0 0 14px rgba(201, 162, 90, 0.3);
   transform: translateY(-1px);
 }
+
+/* ---------- 对弈军令 ---------- */
+.battle-controls {
+  position: fixed;
+  top: 88px;
+  left: 26px;
+  z-index: 12;
+  display: grid;
+  gap: 6px;
+  padding: 6px;
+  color: var(--paper);
+  background:
+    linear-gradient(110deg, rgba(57, 34, 18, 0.92), rgba(13, 12, 12, 0.9)),
+    repeating-linear-gradient(90deg, transparent 0 18px, rgba(238, 199, 117, 0.05) 19px 20px);
+  border: 1px solid rgba(205, 164, 91, 0.38);
+  border-left: 3px solid #9c3927;
+  border-radius: 4px 9px 9px 4px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.32), inset 0 0 22px rgba(205, 164, 91, 0.04);
+  backdrop-filter: blur(9px);
+}
+.control-row { display: flex; align-items: center; }
+.ai-row { min-height: 38px; padding-top: 6px; border-top: 1px solid rgba(205, 164, 91, 0.18); }
+.battle-controls button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  padding: 5px 11px;
+  color: inherit;
+  font-family: "Noto Serif SC", "Songti SC", serif;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+.battle-controls button:hover { background: rgba(232, 192, 112, 0.1); }
+.battle-controls small {
+  display: block;
+  margin-bottom: 3px;
+  color: rgba(238, 224, 191, 0.5);
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 2px;
+}
+.battle-controls b { display: block; font-size: 13px; line-height: 1; letter-spacing: 2px; }
+.mode-picker { display: grid; align-content: center; gap: 4px; }
+.mode-picker > small { margin: 0 0 0 3px; }
+.mode-options { display: flex; gap: 3px; }
+.battle-controls .mode-option {
+  min-height: 29px;
+  padding: 6px 10px;
+  color: rgba(238, 224, 191, 0.6);
+  font-size: 12px;
+  line-height: 1;
+  letter-spacing: 1px;
+  border: 1px solid transparent;
+}
+.battle-controls .mode-option.active {
+  color: #ffe0a0;
+  background: linear-gradient(145deg, rgba(153, 48, 31, 0.72), rgba(96, 29, 22, 0.62));
+  border-color: rgba(240, 190, 97, 0.68);
+  box-shadow: inset 0 0 13px rgba(255, 180, 76, 0.1), 0 0 10px rgba(157, 48, 27, 0.2);
+}
+.ai-controls {
+  display: flex;
+  align-items: stretch;
+}
+.ai-controls[hidden] { display: none; }
+.ai-choice { display: grid; align-content: center; gap: 4px; padding: 0 9px; }
+.ai-choice + .ai-choice { border-left: 1px solid rgba(205, 164, 91, 0.14); }
+.ai-choice small { margin: 0; }
+.ai-choice select {
+  min-width: 72px;
+  color: #f3d99f;
+  font: 600 11px/1 "Noto Serif SC", "Songti SC", serif;
+  background: #21160f;
+  border: 1px solid rgba(205, 164, 91, 0.34);
+  border-radius: 4px;
+  padding: 5px 7px;
+  cursor: pointer;
+  outline: none;
+}
+.ai-choice select:focus { border-color: rgba(240, 190, 97, 0.78); box-shadow: 0 0 0 2px rgba(240, 190, 97, 0.1); }
+.ai-choice select:disabled { opacity: 0.5; cursor: wait; }
+.ai-status {
+  align-self: center;
+  width: 7px;
+  height: 7px;
+  margin: 0 7px 0 2px;
+  border-radius: 50%;
+  background: #846c45;
+  box-shadow: 0 0 0 3px rgba(132, 108, 69, 0.12);
+}
+.ai-status.ready { background: #7cbd79; box-shadow: 0 0 11px rgba(124, 189, 121, 0.7); }
+.ai-status.thinking { background: #f0c978; animation: aiPulse 0.8s ease-in-out infinite alternate; }
+.ai-status.error { background: #e1634c; box-shadow: 0 0 11px rgba(225, 99, 76, 0.65); }
+@keyframes aiPulse { to { opacity: 0.35; transform: scale(0.72); } }
+
+/* ---------- 联机军帐 ---------- */
+.online-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: radial-gradient(circle at 50% 42%, rgba(75, 39, 20, 0.3), rgba(5, 4, 3, 0.82));
+  backdrop-filter: blur(8px);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+.online-dialog.show { opacity: 1; visibility: visible; pointer-events: auto; }
+.online-card {
+  position: relative;
+  width: min(430px, 100%);
+  padding: 34px 38px 36px;
+  color: var(--paper);
+  text-align: center;
+  background:
+    linear-gradient(145deg, rgba(64, 39, 22, 0.98), rgba(16, 13, 11, 0.98)),
+    repeating-linear-gradient(0deg, transparent 0 23px, rgba(238, 199, 117, 0.04) 24px);
+  border: 1px solid rgba(232, 192, 112, 0.5);
+  border-radius: 3px 16px 3px 16px;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.62), inset 0 0 50px rgba(205, 164, 91, 0.05);
+  transform: translateY(14px) scale(0.98);
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.online-dialog.show .online-card { transform: translateY(0) scale(1); }
+.online-card::before,
+.online-card::after {
+  content: "";
+  position: absolute;
+  width: 52px;
+  height: 1px;
+  top: 19px;
+  background: var(--gold);
+}
+.online-card::before { left: 18px; }
+.online-card::after { right: 18px; }
+.online-close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 30px;
+  height: 30px;
+  color: rgba(238, 224, 191, 0.55);
+  font-size: 24px;
+  line-height: 1;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.online-seal {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  margin: 0 auto 14px;
+  color: #ffd59a;
+  font: 400 28px/1 "Ma Shan Zheng", "STKaiti", serif;
+  background: #7f2018;
+  border: 2px solid #d4a75e;
+  box-shadow: 0 0 22px rgba(180, 48, 30, 0.35);
+  transform: rotate(-4deg);
+}
+.online-kicker { color: rgba(232, 192, 112, 0.58); font-size: 10px; letter-spacing: 0.5em; }
+.online-card h2 {
+  margin: 6px 0 10px;
+  color: var(--gold-bright);
+  font: 400 30px/1.3 "Ma Shan Zheng", "STKaiti", serif;
+  letter-spacing: 5px;
+}
+.online-message { min-height: 42px; color: rgba(238, 224, 191, 0.62); font-size: 13px; line-height: 1.7; }
+.online-message.error { color: #ff9c86; }
+.online-primary,
+.online-join button,
+.room-ticket button {
+  color: #231508;
+  font: 600 13px/1 "Noto Serif SC", serif;
+  letter-spacing: 2px;
+  background: linear-gradient(145deg, #efcf89, #b9853e);
+  border: 0;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.online-primary { width: 100%; margin-top: 15px; padding: 13px; }
+.online-primary:disabled,
+.online-join button:disabled { opacity: 0.45; cursor: wait; }
+.online-or { display: flex; align-items: center; gap: 12px; margin: 17px 0; color: rgba(238, 224, 191, 0.3); font-size: 11px; }
+.online-or::before, .online-or::after { content: ""; flex: 1; height: 1px; background: rgba(205, 164, 91, 0.2); }
+.online-join { text-align: left; }
+.online-join label { display: block; margin-bottom: 7px; color: rgba(238, 224, 191, 0.46); font-size: 10px; letter-spacing: 3px; }
+.online-join > div { display: flex; gap: 8px; }
+.online-join input {
+  min-width: 0;
+  flex: 1;
+  padding: 11px 12px;
+  color: #f4dfb3;
+  font: 700 17px/1 monospace;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  background: rgba(5, 6, 8, 0.54);
+  border: 1px solid rgba(205, 164, 91, 0.36);
+  border-radius: 5px;
+  outline: none;
+}
+.online-join input:focus { border-color: #e2b765; box-shadow: 0 0 0 2px rgba(226, 183, 101, 0.12); }
+.online-join button { padding: 0 15px; }
+.room-ticket {
+  margin-top: 20px;
+  padding: 17px;
+  background: rgba(8, 11, 14, 0.48);
+  border: 1px dashed rgba(232, 192, 112, 0.42);
+}
+.room-ticket small { display: block; color: rgba(238, 224, 191, 0.44); font-size: 9px; letter-spacing: 3px; }
+.room-ticket strong { display: block; margin: 6px 0; color: #ffd98f; font: 800 30px/1 monospace; letter-spacing: 0.22em; }
+.room-ticket p { margin-bottom: 12px; color: rgba(238, 224, 191, 0.67); font-size: 12px; }
+.room-ticket button { padding: 9px 14px; }
+.online-back {
+  margin-top: 18px;
+  padding: 9px 13px;
+  color: rgba(238, 224, 191, 0.64);
+  font: 500 11px/1 "Noto Serif SC", serif;
+  letter-spacing: 2px;
+  background: transparent;
+  border: 1px solid rgba(205, 164, 91, 0.3);
+  border-radius: 5px;
+  cursor: pointer;
+}
+.online-back:hover { color: #f5d99d; border-color: rgba(232, 192, 112, 0.6); }
+.ai-status.online { background: #72c8dd; box-shadow: 0 0 11px rgba(114, 200, 221, 0.72); }
+.ai-status.waiting { background: #e4b75f; animation: aiPulse 0.9s ease-in-out infinite alternate; }
 
 /* ---------- 战利品侧栏 ---------- */
 #panel {
@@ -386,6 +623,7 @@ body.general-cinematic-active .demo-trigger {
   z-index: 10;
   pointer-events: none;
 }
+#hint.error { color: #ffad99; border-color: rgba(225, 99, 76, 0.46); }
 
 /* ---------- 终局遮罩 ---------- */
 #overlay {
@@ -445,6 +683,14 @@ body.general-cinematic-active .demo-trigger {
   .actions { gap: 5px; }
   .actions button { padding: 7px 9px; font-size: 12px; letter-spacing: 1px; }
   .repo-link { display: none; }
+  .online-card { padding: 30px 22px 26px; }
+  .battle-controls { top: 66px; left: 10px; padding: 4px; }
+  .battle-controls button { min-height: 37px; padding: 4px 7px; gap: 6px; }
+  .battle-controls small { display: none; }
+  .battle-controls b { font-size: 11px; letter-spacing: 1px; }
+  .battle-controls .mode-option { min-height: 29px; padding: 5px 7px; font-size: 11px; }
+  .ai-choice { padding: 0 4px; }
+  .ai-choice select { min-width: 64px; max-width: 78px; padding: 5px 4px; font-size: 10px; }
   #panel { display: none; }
   #hint { bottom: 12px; width: calc(100% - 28px); padding: 7px 12px; text-align: center; font-size: 11px; letter-spacing: 1px; }
   #resultText { font-size: 64px; }

@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;600;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/style.css?v=20260901.3" />
   <script type="importmap">
     {
       "imports": {
@@ -60,12 +60,72 @@
       <button id="btnUndo" title="悔棋">悔棋</button>
       <button id="btnCam" title="换边视角">换边</button>
       <button id="btnRestart" title="重新开始">重开</button>
-      <a class="repo-link" href="https://github.com/tsonglew/chess-cn" target="_blank" rel="noopener" title="项目地址">
+      <a class="repo-link" href="https://github.com/inbjo/chess-cn" target="_blank" rel="noopener" title="项目地址">
         <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
         <span>GitHub</span>
       </a>
     </nav>
   </header>
+
+  <div id="battleControls" class="battle-controls" aria-label="对弈设置">
+    <div class="control-row mode-row">
+      <div class="mode-picker">
+        <small>对弈模式</small>
+        <div class="mode-options" role="group" aria-label="选择对弈模式">
+          <button id="btnModeAi" class="mode-option active" type="button" data-mode="ai" aria-pressed="true">人机</button>
+          <button id="btnModeLocal" class="mode-option" type="button" data-mode="local" aria-pressed="false">双人</button>
+          <button id="btnModeOnline" class="mode-option" type="button" data-mode="online" aria-pressed="false">联机</button>
+        </div>
+      </div>
+    </div>
+    <div class="control-row ai-row">
+      <div id="aiControls" class="ai-controls">
+        <label class="ai-choice">
+          <small>人机引擎</small>
+          <select id="aiEngineSelect" aria-label="人机引擎">
+            <option value="godogpaw">godogpaw</option>
+            <option value="pikafish">Pikafish</option>
+          </select>
+        </label>
+        <label class="ai-choice">
+          <small>敌军谋略</small>
+          <select id="aiDifficultySelect" aria-label="人机难度">
+            <option value="easy">入门</option>
+            <option value="medium">中等</option>
+            <option value="hard">困难</option>
+            <option value="master">大师</option>
+          </select>
+        </label>
+      </div>
+      <span id="aiStatus" class="ai-status" role="status" aria-live="polite"></span>
+    </div>
+  </div>
+
+  <div id="onlineDialog" class="online-dialog" aria-hidden="true">
+    <section class="online-card" role="dialog" aria-modal="true" aria-labelledby="onlineTitle">
+      <button id="btnOnlineClose" class="online-close" type="button" aria-label="关闭">×</button>
+      <div class="online-seal" aria-hidden="true">戰</div>
+      <p class="online-kicker">千里会战</p>
+      <h2 id="onlineTitle">联机对弈军令</h2>
+      <p id="onlineMessage" class="online-message">创建房间执红先行，或输入军帐编号加入黑方。</p>
+      <button id="btnCreateRoom" class="online-primary" type="button">创建房间 · 执红</button>
+      <div class="online-or"><span>或</span></div>
+      <form id="joinRoomForm" class="online-join">
+        <label for="roomCode">军帐编号</label>
+        <div>
+          <input id="roomCode" name="room" maxlength="6" autocomplete="off" spellcheck="false" placeholder="例如 A7K9QX" />
+          <button type="submit">加入 · 执黑</button>
+        </div>
+      </form>
+      <div id="roomTicket" class="room-ticket" hidden>
+        <small>当前军帐</small>
+        <strong id="activeRoomCode">------</strong>
+        <p id="roomSeat">你执红方 · 等待敌军</p>
+        <button id="btnCopyInvite" type="button">复制邀请链接</button>
+      </div>
+      <button id="btnBackToAi" class="online-back" type="button">退出联机 · 返回人机</button>
+    </section>
+  </div>
 
   <aside id="panel">
     <div class="cap-block">
@@ -100,7 +160,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/main.js"></script>
+  <script type="module" src="js/main.js?v=20260901.3"></script>
   <noscript><p class="noscript">请启用 JavaScript 后进入战场。</p></noscript>
 </body>
 </html>

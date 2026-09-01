@@ -208,10 +208,12 @@ export function createMarkers() {
   const moveMt = new THREE.MeshBasicMaterial({ color: 0x7fd4a8, transparent: true, opacity: 0.85, depthWrite: false });
   const capMt = new THREE.MeshBasicMaterial({ color: 0xff5a4a, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide });
   const selMt = new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide });
+  const responseMt = new THREE.MeshBasicMaterial({ color: 0x79e6bd, transparent: true, opacity: 0.92, depthWrite: false, side: THREE.DoubleSide });
   const lastMt = new THREE.MeshBasicMaterial({ color: 0x8fb8ff, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide });
   const moveGeo = new THREE.CircleGeometry(0.3, 24);
   const capGeo = new THREE.RingGeometry(1.2, 1.38, 36);
   const selectGeo = new THREE.RingGeometry(1.24, 1.38, 36);
+  const responseGeo = new THREE.RingGeometry(1.42, 1.57, 36);
   const lastGeo = new THREE.RingGeometry(1.18, 1.3, 36);
   return {
     group,
@@ -239,6 +241,16 @@ export function createMarkers() {
       ring.position.set(x, TOP_Y + 0.02, z);
       ring.userData.isSelectRing = true;
       group.add(ring);
+    },
+    responsePieces(pieces) {
+      for (const piece of pieces) {
+        const { x, z } = squareToWorld(piece.row, piece.col);
+        const ring = new THREE.Mesh(responseGeo, responseMt);
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.set(x, TOP_Y + 0.025, z);
+        ring.userData.isResponseHint = true;
+        group.add(ring);
+      }
     },
     lastMoveMarks(from, to) {
       for (const sq of [from, to]) {
