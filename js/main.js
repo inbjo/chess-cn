@@ -7,6 +7,7 @@ import { preloadPieceModels } from './model-assets.js?v=20260901.3';
 import { createBoard, createMarkers, createEnvironment, squareToWorld } from './board3d.js?v=20260901.3';
 import { FX } from './fx.js?v=20260901.3';
 import { probeWasmAi, resetWasmAi, searchWasmAi, uciToMove } from './ai-engine.js?v=20260901.3';
+import { buildRoomInviteUrl, copyTextToClipboard } from './online-utils.js?v=20260901.4';
 
 function requiredElement(id) {
   const element = document.getElementById(id);
@@ -344,6 +345,7 @@ const activeRoomCode = document.getElementById('activeRoomCode');
 const roomSeat = document.getElementById('roomSeat');
 const btnCreateRoom = document.getElementById('btnCreateRoom');
 const joinRoomForm = document.getElementById('joinRoomForm');
+let roomRequestController = null;
 
 function showOnlineDialog() {
   onlineDialog.classList.add('show');
@@ -372,20 +374,34 @@ function setOnlineBusy(busy) {
 }
 
 async function requestRoom(path) {
+  roomRequestController?.abort();
+  const controller = new AbortController();
+  roomRequestController = controller;
+  const timeout = setTimeout(() => controller.abort(), 10000);
   setOnlineBusy(true);
   onlineMessage.classList.remove('error');
   onlineMessage.textContent = '正在传递军令……';
   try {
-    const response = await fetch(path, { method: 'POST', headers: { Accept: 'application/json' } });
+    const response = await fetch(path, {
+      method: 'POST',
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || `请求失败（${response.status}）`);
     connectOnline(payload);
   } catch (error) {
-    onlineMessage.textContent = error.message || '联机军令传递失败';
+    onlineMessage.textContent = error.name === 'AbortError'
+      ? '创建或加入房间超时，请检查服务端后重试'
+      : error.message || '联机军令传递失败';
     onlineMessage.classList.add('error');
     showOnlineDialog();
   } finally {
-    setOnlineBusy(false);
+    clearTimeout(timeout);
+    if (roomRequestController === controller) {
+      roomRequestController = null;
+      setOnlineBusy(false);
+    }
   }
 }
 
@@ -403,9 +419,7 @@ function connectOnline(ticket) {
     reconnectAttempt: 0,
   };
   sessionStorage.setItem(`chess-room-${online.roomId}`, JSON.stringify(ticket));
-  const url = new URL(location.href);
-  url.searchParams.set('room', online.roomId);
-  history.replaceState(null, '', url);
+  history.replaceState(null, '', buildRoomInviteUrl(location, online.roomId));
   installGameState(R.createInitialState());
   showRoomTicket();
   openOnlineSocket();
@@ -471,11 +485,20 @@ function handleOnlineEvent(event) {
     battleHint(onlineHintText());
     if (event.game_over) showOnlineResult(event);
   } else if (event.type === 'presence') {
+    const opponentWasConnected = online.opponentConnected;
     online.opponentConnected = online.color === R.RED ? event.black_connected : event.red_connected;
     showRoomTicket();
-    if (online.opponentConnected) hideOnlineDialog();
+    if (online.opponentConnected) {
+      onlineMessage.classList.remove('error');
+      onlineMessage.textContent = opponentWasConnected ? '双方均已连接' : '对方已进入房间，可以继续对弈';
+      hideOnlineDialog();
+    } else if (opponentWasConnected) {
+      onlineMessage.classList.add('error');
+      onlineMessage.textContent = '对方已离开房间，正在等待其重新连接';
+      showOnlineDialog();
+    }
     refreshBattleControls();
-    battleHint(onlineHintText());
+    battleHint(opponentWasConnected && !online.opponentConnected ? '对方已离开房间' : onlineHintText(), opponentWasConnected && !online.opponentConnected);
   } else if (event.type === 'move') {
     if (event.revision <= online.revision) return;
     online.revision = event.revision;
@@ -1369,13 +1392,15 @@ joinRoomForm.addEventListener('submit', event => {
 });
 document.getElementById('btnCopyInvite').addEventListener('click', async () => {
   if (!online) return;
-  const invite = new URL(location.href);
-  invite.searchParams.set('room', online.roomId);
+  const invite = buildRoomInviteUrl(location, online.roomId);
   try {
-    await navigator.clipboard.writeText(invite.toString());
+    await copyTextToClipboard(invite);
+    onlineMessage.classList.remove('error');
+    onlineMessage.textContent = `邀请链接已复制：${invite}`;
     battleHint(`军帐 ${online.roomId} 的邀请链接已复制`);
   } catch (_) {
-    onlineMessage.textContent = invite.toString();
+    onlineMessage.classList.add('error');
+    onlineMessage.textContent = `无法自动复制，请手动复制：${invite}`;
   }
 });
 

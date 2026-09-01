@@ -1,4 +1,8 @@
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use axum::extract::ws::{Message, WebSocket};
 use rand::{Rng, distributions::Alphanumeric};
@@ -9,6 +13,8 @@ use crate::rules::{Board, Color, Move, RuleError, Square};
 
 const MAX_ROOMS: usize = 1024;
 const ROOM_TTL_SECS: u64 = 24 * 60 * 60;
+const HEARTBEAT_INTERVAL_SECS: u64 = 10;
+const HEARTBEAT_TIMEOUT_SECS: u64 = 30;
 
 #[derive(Clone, Default)]
 pub struct OnlineHub {
@@ -208,10 +214,16 @@ impl OnlineHub {
         }
         broadcast_presence(&room).await;
 
+        let mut heartbeat = tokio::time::interval(Duration::from_secs(HEARTBEAT_INTERVAL_SECS));
+        heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        heartbeat.tick().await;
+        let mut last_seen = Instant::now();
+
         loop {
             tokio::select! {
                 incoming = socket.recv() => {
                     let Some(Ok(message)) = incoming else { break };
+                    last_seen = Instant::now();
                     match message {
                         Message::Text(text) => {
                             if text.len() > 1024 {
@@ -249,6 +261,12 @@ impl OnlineHub {
                         Message::Close(_) => break,
                         _ => {}
                     }
+                }
+                _ = heartbeat.tick() => {
+                    if last_seen.elapsed() >= Duration::from_secs(HEARTBEAT_TIMEOUT_SECS) {
+                        break;
+                    }
+                    if socket.send(Message::Ping(Vec::new().into())).await.is_err() { break; }
                 }
                 event = receiver.recv() => {
                     match event {
