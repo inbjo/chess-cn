@@ -1,4 +1,4 @@
-// 拟人化棋子建模：Tripo 角色 + Three.js 汉字底座 + 头顶身份令牌；基础几何角色保留为加载失败回退。
+// 棋子建模：Tripo 角色 + Three.js 汉字底座 + 头顶身份令牌；基础几何角色保留为加载失败回退。
 // 每个棋子 = 汉字底座 + 角色 + 镜头朝向身份令牌。角色正面朝 +z，由 main.js 按阵营转向。
 import * as THREE from 'three';
 import { GLYPH } from './rules.js?v=20260901.3';

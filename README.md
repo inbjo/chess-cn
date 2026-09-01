@@ -1,330 +1,157 @@
 # 楚河漢界 · 3D 中国象棋
 
-一个运行在浏览器中的 Three.js 3D 中国象棋项目，支持拟人棋子、兵种攻击演出、可自由选择的 godogpaw/Pikafish 人机、本地双人和 WebSocket 联机对弈。
-
-当前仓库：[inbjo/chess-cn](https://github.com/inbjo/chess-cn)
-
-> 本项目的 3D 前端基础来自 [tsonglew/chess-cn](https://github.com/tsonglew/chess-cn)，在其基础上增加了 Rust 服务端、godogpaw WASM/Pikafish 双引擎人机、联机房间和部署支持。完整来源与许可证说明见[项目来源与许可证](#项目来源与许可证)。
-
-> **发行限制：** 项目源码采用 GPL-3.0-or-later；GitHub Releases 的完整包内置官方 Pikafish NNUE，该权重未经许可不得商业使用，因此完整发行包严格用于非商业场景。详见 [`DISTRIBUTION-NOTICE.md`](DISTRIBUTION-NOTICE.md)。
+一个运行在浏览器中的 Three.js 3D 中国象棋项目，支持 godogpaw/Pikafish 双人机引擎、本地双人和 WebSocket 联机对弈。
 
 <img width="924" height="570" alt="楚河漢界 3D 中国象棋" src="https://github.com/user-attachments/assets/d0e616e7-5747-4cec-acb8-79e9632a030a" />
 
-## 功能
+> 项目源码采用 GPL-3.0-or-later。完整发行包和 Docker 镜像包含受非商业条款约束的官方 Pikafish NNUE，仅供非商业使用。详见 [`DISTRIBUTION-NOTICE.md`](DISTRIBUTION-NOTICE.md)。
 
-- Three.js 3D 棋盘、战场环境、拟人棋子和 WebGL 特效
-- 完整中国象棋基础规则：蹩马腿、塞象眼、炮翻山、兵过河、九宫、飞将、将军、绝杀、困毙和悔棋
-- godogpaw：浏览器 Web Worker 中运行 WebAssembly，支持四档难度
-- Pikafish：Rust 服务端通过 UCI 调用引擎与 NNUE，Release 包已内置，支持四档难度
-- 引擎与难度相互独立，可在界面中自由组合
-- 本地双人对弈
-- WebSocket 联机房间、服务端规则校验、断线重连和双人确认重开
-- release 构建将 HTML、CSS、JavaScript、WASM 和模型嵌入单个 Rust 可执行文件
-- WebGL 上下文和后台页签恢复处理
+## Docker 部署（推荐）
 
-## 演示
+官方镜像内置前端、godogpaw WASM、Pikafish 和 NNUE，支持 `linux/amd64` 与 `linux/arm64`。推荐使用 Docker Compose 部署。
 
-### 帅 / 将全屏击杀特写
+### Docker Compose
 
-https://github.com/user-attachments/assets/ac0ad772-a503-47b1-89e3-691fbb4b09e0
-
-### 完整攻击演示
-
-https://github.com/user-attachments/assets/8aae6350-6348-47c0-bc0f-48be18bcc7e8
-
-攻击演示入口：
-
-```text
-?demo=general|advisor|elephant|horse|chariot|cannon|soldier
+```yaml
+services:
+  chess-cn:
+    image: sina.dev/kudang/chess-cn:latest
+    container_name: chess-cn
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      CHESS_AI_POOL_SIZE: "${CHESS_AI_POOL_SIZE:-2}"
+      CHESS_AI_HASH_MB: "${CHESS_AI_HASH_MB:-32}"
+      RUST_LOG: "${RUST_LOG:-chess_cn_server=info}"
 ```
 
-追加 `&test=1` 后可以通过 `window.advanceTime()` 确定性推进动画，供自动化测试使用。
-
-## AI 架构
-
-| 引擎 | 运行位置 | 可选难度 | 是否需要 Rust 服务 |
-|---|---|---|---|
-| godogpaw WASM | 浏览器 Web Worker | 入门 / 中等 / 困难 / 大师 | 否 |
-| Pikafish + NNUE | 服务端外部进程 | 入门 / 中等 / 困难 / 大师 | 是 |
-
-引擎和难度是两个独立选项。例如可以选择“godogpaw + 大师”，也可以选择“Pikafish + 入门”。Pikafish 不可用时只影响 Pikafish 选项。
-
-| 难度 | godogpaw | Pikafish |
-|---|---|---|
-| 入门 | 深度 2，约 70ms 上限 | 约 90ms，最多 4 条候选中择一 |
-| 中等 | 深度 6，约 350ms 上限 | 约 350ms，最多 2 条候选中择一 |
-| 困难 | 深度 10，约 900ms 上限 | 约 900ms，选择最佳着法 |
-| 大师 | 深度 12，约 2000ms 上限 | 约 2000ms，选择最佳着法 |
-
-浏览器端搜索每次都会从完整 UCI 棋谱重放局面。WASM 返回棋步后，前端规则引擎还会进行一次合法性校验。使用 Pikafish 时，Rust 会先重放并校验客户端棋谱，再验证 Pikafish 返回的棋步。
-
-WASM 在独立 Worker 中运行，搜索不会阻塞 Three.js 动画。不同设备的实际耗时会有差异，时间参数是软限制，引擎可能有少量超时。
-
-## 快速开始
-
-### 完整模式
-
-要求：
-
-- Rust 工具链和 Cargo
-- 现代浏览器，支持 WebGL（建议 WebGL 2）、WebAssembly、Web Worker 和 ES Modules
-- 可选：源码开发时自行安装 Pikafish 与 NNUE；官方 Release 包无需另行安装
-
-启动：
+将以上内容保存为 `docker-compose.yml`，然后启动：
 
 ```bash
-./dev.sh
-# 本机打开 http://127.0.0.1:8000，局域网设备打开 http://主机IP:8000
+docker compose up -d
 ```
 
-常用选项：
+打开 <http://127.0.0.1:8000>；局域网设备可通过 `http://主机IP:8000` 访问。
 
 ```bash
-./dev.sh --verify                 # 运行 Rust、JavaScript 完整检查后启动
-./dev.sh --release                # 使用 release 构建启动
-./dev.sh --no-ai                  # 禁用 Pikafish；godogpaw 人机仍可用
-./dev.sh --bind 127.0.0.1:8080    # 修改监听地址
-./dev.sh --help
+docker compose ps
+docker compose logs -f
+docker compose pull
+docker compose up -d
+docker compose down
 ```
 
-开发构建直接读取工作区前端文件；修改 HTML、CSS、JavaScript 后刷新浏览器即可。release 构建会嵌入前端资源，资源修改后必须重新执行 `cargo build --release`。
+### Docker CLI
 
-默认监听所有网卡以方便局域网联机。请只在可信网络使用，并通过系统防火墙限制 TCP 8000；不要在没有 HTTPS、访问控制或反向代理保护时直接暴露到公网。如只需本机访问，使用 `./dev.sh --bind 127.0.0.1:8000`。
+不使用 Compose 时可以直接启动：
+
+```bash
+docker pull sina.dev/kudang/chess-cn:latest
+docker run -d \
+  --name chess-cn \
+  --restart unless-stopped \
+  -p 8000:8000 \
+  sina.dev/kudang/chess-cn:latest
+```
+
+如需直连 Docker Hub，将镜像地址改为 `kudang/chess-cn:latest`。
+
+### sina.dev 镜像代理
+
+[`sina.dev`](https://sina.dev/) 是使用 [MirrorProxy](https://github.com/inbjo/MirrorProxy) 自部署的镜像代理，同时支持 Docker/OCI 镜像和 GitHub 文件加速：
+
+- Docker Hub：在镜像名前增加 `sina.dev/`，例如 `sina.dev/kudang/chess-cn:latest`；
+- GitHub：在原始 URL 前增加 `https://sina.dev/`，例如 `https://sina.dev/https://github.com/inbjo/chess-cn`；
+- GitHub Raw 和 Release 附件使用相同的 URL 前缀方式。
+
+该代理主要方便中国境内下载。能够稳定访问上游时，也可以直接使用 Docker Hub 和 GitHub 原始地址。
+
+### 资源配置
+
+Pikafish 默认维护 2 个常驻进程，每个进程使用 32 MB Hash。小型服务器可通过环境变量降低并发：
+
+```bash
+CHESS_AI_POOL_SIZE=1 CHESS_AI_HASH_MB=32 docker compose up -d
+```
+
+也可以编辑 `docker-compose.yml` 中的 `environment`。所有可用变量见[配置](#配置)。
+
+## 二进制部署
+
+不使用容器时，可以下载完整发行包，或从源码构建单个 Rust 服务端。release 二进制已嵌入 HTML、CSS、JavaScript、WASM 和模型，无需额外部署前端文件。
 
 ### 下载发行包
 
-推送 `v*` 标签后，GitHub Actions 会测试项目并发布以下完整包：
+在 [GitHub Releases](https://github.com/inbjo/chess-cn/releases) 下载对应平台的完整包：
 
-| 包名 | 运行平台 | Pikafish 来源 |
+| 平台 | 文件 | Pikafish 来源 |
 |---|---|---|
-| `chess-cn-linux-x86_64.tar.gz` | Linux x86_64（SSE4.1 + POPCNT） | 官方发布二进制 |
-| `chess-cn-linux-aarch64.tar.gz` | Linux ARM64 / ARMv8 | 固定标签源码原生编译 |
-| `chess-cn-windows-x86_64.zip` | Windows x86_64 | 官方发布二进制 |
-| `chess-cn-macos-x86_64.tar.gz` | macOS Intel | 固定标签源码原生编译 |
-| `chess-cn-macos-aarch64.tar.gz` | macOS Apple Silicon | 官方发布二进制 |
+| Linux x86_64 | `chess-cn-linux-x86_64.tar.gz` | 官方 SSE4.1 + POPCNT 二进制 |
+| Linux ARM64 | `chess-cn-linux-aarch64.tar.gz` | 固定版本源码原生编译 |
+| Windows x86_64 | `chess-cn-windows-x86_64.zip` | 官方二进制 |
+| macOS Intel | `chess-cn-macos-x86_64.tar.gz` | 固定版本源码原生编译 |
+| macOS Apple Silicon | `chess-cn-macos-aarch64.tar.gz` | 官方二进制 |
 
-解压后直接运行根目录中的 `chess-cn-server`（Windows 为 `chess-cn-server.exe`）。服务端会自动发现同目录下 `pikafish/` 中的引擎和 NNUE，无需设置环境变量。默认监听 `0.0.0.0:8000`，同一局域网设备可通过主机 IP 加入游戏。
-
-也可在 Actions 页面手动运行 **Build and release** 工作流；手动运行只生成可下载的 Actions Artifacts。创建并推送版本标签才会发布 GitHub Release：
+中国境内可以在 GitHub URL 前增加 `https://sina.dev/`，例如：
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+curl -fLO https://sina.dev/https://github.com/inbjo/chess-cn/releases/download/v1.0.0/chess-cn-linux-x86_64.tar.gz
+curl -fLO https://sina.dev/https://github.com/inbjo/chess-cn/releases/download/v1.0.0/SHA256SUMS
+sha256sum -c SHA256SUMS --ignore-missing
 ```
 
-每个标签 Release 同时包含 SHA-256 校验文件和固定 Pikafish 标签的完整对应源码归档。
-
-### 纯静态模式
-
-只开发前端或只使用 godogpaw 四档难度时，可以使用静态服务器：
+Linux 安装示例：
 
 ```bash
-python3 -m http.server 8000
-# 打开 http://127.0.0.1:8000
+tar -xzf chess-cn-linux-x86_64.tar.gz
+cd chess-cn-linux-x86_64
+./chess-cn-server
 ```
 
-不要直接使用 `file://` 打开 `index.html`，WASM、ES Modules 和 Worker 需要 HTTP 服务。
+Windows 解压后运行 `chess-cn-server.exe`，macOS 解压后运行 `./chess-cn-server`。服务端会自动发现同目录 `pikafish/` 下的引擎和 NNUE，默认监听 `0.0.0.0:8000`。
 
-纯静态模式支持：
+> Linux x86_64 的内置 Pikafish 需要 SSE4.1 和 POPCNT 指令集。每个 Release 同时提供 `SHA256SUMS` 和固定 Pikafish 版本的对应源码归档。
 
-- godogpaw WASM 人机
-- 本地双人
-- 3D 棋盘和全部演出
-
-纯静态模式不支持：
-
-- Pikafish 引擎的所有难度
-- 联机房间
-
-生产静态服务器必须为 `.wasm` 返回 `Content-Type: application/wasm`。当前 Go WASM 是单线程实现，不依赖 `SharedArrayBuffer`，无需为此配置 COOP/COEP 响应头。
-
-## Pikafish 引擎配置
-
-源码仓库本身不提交大型 Pikafish 可执行文件或官方 NNUE 权重。直接从源码运行时可以自行获取并配置；GitHub Release 完整包则已带齐，无需设置：
-
-```bash
-PIKAFISH_PATH=/opt/pikafish/pikafish \
-PIKAFISH_NNUE=/opt/pikafish/pikafish.nnue \
-cargo run --release
-```
-
-服务启动时会检测 Pikafish。未找到时 Pikafish 引擎的四档难度均不可用，godogpaw 人机、本地双人和联机模式不受影响。
-
-### 环境变量
-
-| 变量 | 默认值 | 说明 |
-|---|---|---|
-| `CHESS_BIND` | `0.0.0.0:8000` | Rust HTTP/WebSocket 监听地址，默认允许局域网访问 |
-| `PIKAFISH_PATH` | 先找发行包内置引擎，再从 `PATH` 查找 | Pikafish 可执行文件路径；显式设置时优先级最高 |
-| `PIKAFISH_NNUE` | 自动查找引擎同目录的 `pikafish.nnue` | NNUE 权重路径；显式设置时优先级最高 |
-| `CHESS_AI_POOL_SIZE` | `2` | 常驻 Pikafish 进程上限，范围 1–32 |
-| `CHESS_AI_HASH_MB` | `32` | 每个 Pikafish 进程的 Hash 内存，范围 1–1024 MB |
-| `CHESS_DISABLE_AI` | 未设置 | 设为 `1`、`true` 或 `yes` 时禁用 Pikafish |
-| `RUST_LOG` | 由启动方式决定 | Rust 日志过滤，例如 `chess_cn_server=info` |
-
-Pikafish 进程池中的每个进程使用一个搜索线程。部署时应根据 CPU 核数、NNUE 内存和并发量设置 `CHESS_AI_POOL_SIZE`，避免在小型服务器上同时启动过多搜索。
-
-## 重建 godogpaw WASM
-
-仓库已包含可直接部署的：
-
-- `assets/godogpaw.wasm`
-- `js/wasm_exec.js`
-- `assets/godogpaw-LICENSE.txt`
-- `assets/wasm_exec-LICENSE.txt`
-
-重建要求：Go、Git、curl 和 tar。执行：
-
-```bash
-bash ./build-godogpaw-wasm.sh
-```
-
-脚本会：
-
-1. 下载固定的 godogpaw 提交 `b135b58d1b45c2dc090bbc346a27cfbc6e08b2dd`；
-2. 应用 `godogpaw.patch`；
-3. 运行 godogpaw 引擎测试；
-4. 编译 `GOOS=js GOARCH=wasm` 产物；
-5. 同步与当前 Go 编译器匹配的 `wasm_exec.js` 和许可证。
-
-WASM 与 `wasm_exec.js` 必须由兼容的 Go 工具链一起生成，不应只单独替换其中一个文件。
-
-## 生产部署
-
-### 方案一：Docker（内置双人机引擎）
-
-镜像采用多阶段构建，支持 `linux/amd64` 和 `linux/arm64`：
-
-- `index.html`、CSS、JavaScript、Three.js、模型和 godogpaw WASM 全部由 `rust-embed` 内嵌在 `chess-cn-server`；
-- Pikafish 原生程序和 `pikafish.nnue` 放在镜像的 `/opt/chess-cn/pikafish/`；
-- amd64 使用固定官方 SSE4.1 + POPCNT 二进制，arm64 从同一固定提交以 `ARCH=armv8` 编译；
-- 镜像同时携带第三方许可证、NNUE 条款和 Pikafish 完整对应源码归档；
-- 最终容器以 UID/GID `10001` 非 root 用户运行。
-
-构建当前主机架构并载入本地 Docker：
-
-```bash
-./docker-build.sh --tag chess-cn:local
-docker run --rm -p 8000:8000 chess-cn:local
-```
-
-打开 <http://127.0.0.1:8000>，或检查：
-
-```bash
-curl http://127.0.0.1:8000/api/health
-curl http://127.0.0.1:8000/api/ai/status
-```
-
-构建单独的 ARM64 镜像：
-
-```bash
-./docker-build.sh --platform linux/arm64 --tag chess-cn:arm64
-```
-
-构建并推送 amd64/arm64 多架构镜像：
-
-```bash
-docker login ghcr.io
-./docker-build.sh \
-  --platform linux/amd64,linux/arm64 \
-  --tag ghcr.io/inbjo/chess-cn:v0.1.0 \
-  --push
-```
-
-#### GitHub Actions 自动发布到 Docker Hub
-
-工作流 `.github/workflows/docker-publish.yml` 会发布到 `kudang/chess-cn`：
-
-- 推送 `master`：更新 `kudang/chess-cn:latest` 和 `sha-<提交>`；
-- 推送 `v1.2.3` 标签：发布 `1.2.3`、`1.2`、`latest` 和 `sha-<提交>`；
-- 在 Actions 页面手动运行：按当前默认分支构建并发布；
-- 每个标签都是同时支持 `linux/amd64` 和 `linux/arm64` 的 manifest list。
-
-首次运行前，在 GitHub 仓库的 **Settings → Secrets and variables → Actions** 中配置：
-
-1. Repository variable：`DOCKERHUB_USERNAME`，值为 `kudang`；
-2. Repository secret：`DOCKERHUB_TOKEN`，值为 Docker Hub 创建的 Personal Access Token，权限至少为 Read & Write；
-3. 可选 Repository variable：`GITHUB_DOWNLOAD_PROXY`；默认使用 `https://sina.dev/`，设置为 `direct` 时直连 GitHub，也可填写其他兼容代理前缀。
-
-不要把 Docker Hub 登录密码或 Token 写进 YAML、提交记录或普通变量。配置完成并提交工作流后，可在 GitHub Actions 页面手动运行，或推送版本标签：
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-拉取并运行：
-
-```bash
-docker pull kudang/chess-cn:latest
-docker run --rm -p 8000:8000 kudang/chess-cn:latest
-```
-
-多架构构建通常通过 BuildKit/QEMU 执行 ARM64 的原生编译，首次构建 Pikafish 会比较慢。可通过环境变量覆盖并发和内存，例如：
-
-```bash
-docker run --rm -p 8000:8000 \
-  -e CHESS_AI_POOL_SIZE=1 \
-  -e CHESS_AI_HASH_MB=32 \
-  chess-cn:local
-```
-
-构建脚本默认通过 `https://sina.dev/` 获取固定的 GitHub 归档，并对源码和官方发布包执行 SHA-256 校验。网络可直连 GitHub 时可用 `CHESS_GITHUB_PROXY= ./docker-build.sh` 关闭代理。
-
-完整镜像包含受非商业条款约束的官方 NNUE，因此仍严格仅供非商业使用。
-
-### 方案二：单个 Rust 可执行文件
-
-不使用容器时，可部署单个 Rust 服务端并在旁边放置 Pikafish 与 NNUE。
-
-#### 1. 构建与验证
+### 从源码构建
 
 ```bash
 npm run check
 cargo fmt --all -- --check
 cargo clippy --all-targets -- -D warnings
-cargo test
-cargo build --release
+cargo test --locked
+cargo build --release --locked
 ```
 
-输出文件：
+输出文件为 `target/release/chess-cn-server`。源码仓库不包含大型 Pikafish 二进制和 NNUE；需要服务端人机时，应将其放在可执行文件旁的 `pikafish/` 目录，或通过 `PIKAFISH_PATH` 和 `PIKAFISH_NNUE` 指定路径。
 
-```text
-target/release/chess-cn-server
-```
-
-release 二进制已嵌入前端、WASM 和模型。部署时不需要额外复制 `index.html`、`js/`、`css/`、`vendor/` 或 `assets/`。
-
-#### 2. 准备部署目录
-
-示例目录：
+示例部署目录：
 
 ```text
 /opt/chess-cn/
 ├── chess-cn-server
-└── chess-cn.env
+├── chess-cn.env
+└── pikafish/
+    ├── pikafish
+    └── pikafish.nnue
 ```
 
-`/opt/chess-cn/chess-cn.env` 示例：
+`/opt/chess-cn/chess-cn.env`：
 
 ```bash
 CHESS_BIND=0.0.0.0:8000
 RUST_LOG=chess_cn_server=info
-PIKAFISH_PATH=/opt/pikafish/pikafish
-PIKAFISH_NNUE=/opt/pikafish/pikafish.nnue
+PIKAFISH_PATH=/opt/chess-cn/pikafish/pikafish
+PIKAFISH_NNUE=/opt/chess-cn/pikafish/pikafish.nnue
 CHESS_AI_POOL_SIZE=2
 CHESS_AI_HASH_MB=64
 ```
 
-如果不使用 Pikafish 引擎，删除两个 `PIKAFISH_*` 变量并设置：
+不使用 Pikafish 时，删除两个 `PIKAFISH_*` 变量并增加 `CHESS_DISABLE_AI=1`。godogpaw 人机、本地双人和联机对弈仍可使用。
 
-```bash
-CHESS_DISABLE_AI=1
-```
+### systemd 服务
 
-#### 3. systemd 服务
-
-`/etc/systemd/system/chess-cn.service` 示例：
+创建 `/etc/systemd/system/chess-cn.service`：
 
 ```ini
 [Unit]
@@ -358,11 +185,11 @@ sudo systemctl status chess-cn
 journalctl -u chess-cn -f
 ```
 
-服务本身不需要写入工作目录；联机房间和棋谱只保存在进程内存中。
+服务本身不需要写入工作目录。请提前创建 `chess-cn` 系统用户，并确保可执行文件、Pikafish 和 NNUE 对该用户可读且引擎具有执行权限。
 
-#### 4. Nginx 反向代理
+### Nginx 反向代理
 
-WebSocket 与普通 HTTP 使用同一上游。示例：
+WebSocket 与普通 HTTP 使用同一上游：
 
 ```nginx
 map $http_upgrade $connection_upgrade {
@@ -393,182 +220,160 @@ server {
 }
 ```
 
-公网部署应配置 HTTPS；在 HTTPS 页面中浏览器会自动使用 `wss://` 连接联机房间。
+公网部署必须配置 HTTPS；HTTPS 页面会自动通过 `wss://` 连接联机房间。建议让 Rust 服务只监听本机地址：
 
-#### 5. 健康检查
+```bash
+CHESS_BIND=127.0.0.1:8000
+```
+
+### 健康检查
 
 ```bash
 curl http://127.0.0.1:8000/api/health
-```
-
-预期响应：
-
-```json
-{"status":"ok"}
-```
-
-Pikafish 状态：
-
-```bash
 curl http://127.0.0.1:8000/api/ai/status
 ```
 
-#### 6. 单实例限制
+健康接口的正常响应为 `{"status":"ok"}`；AI 状态接口用于确认 Pikafish 是否可用。
 
-当前联机房间、席位、棋谱和重开状态都保存在 Rust 进程内存中：
+### 单实例限制
+
+当前联机房间、席位、棋谱和重开状态保存在 Rust 进程内存中：
 
 - 服务重启会清空全部房间；
 - 不应直接启动多个无共享状态的实例做轮询负载均衡；
-- 若必须多实例部署，需要先把房间状态迁移到共享存储，并为 WebSocket 配置会话粘滞或统一消息总线。
+- 多实例部署前需要将房间状态迁移到共享存储，并配置会话粘滞或统一消息总线。
 
-### 方案二：静态托管
+## 功能
 
-可以把以下内容发布到 Nginx、对象存储静态网站或 Pages 服务：
+- Three.js 3D 棋盘、战场环境和 WebGL 特效
+- 完整中国象棋规则：蹩马腿、塞象眼、炮翻山、兵过河、九宫、飞将、将军、绝杀、困毙和悔棋
+- godogpaw WebAssembly 人机，在 Web Worker 中运行，不阻塞动画
+- Pikafish + NNUE 服务端人机
+- 两种引擎均支持入门、中等、困难、大师四档难度
+- 本地双人对弈
+- WebSocket 联机房间、服务端规则校验、断线重连和双方确认重开
+- HTML、CSS、JavaScript、WASM 和模型嵌入 Rust 可执行文件
+- WebGL 上下文与后台页签恢复
 
-```text
-index.html
-favicon.svg
-css/
-js/
-vendor/
-assets/
-```
+## 演示
 
-静态平台需要满足：
+### 帅 / 将全屏击杀特写
 
-- 保持原有相对目录结构；
-- `.js` 使用 JavaScript MIME；
-- `.wasm` 使用 `application/wasm`；
-- 允许 Worker 加载 `js/ai-worker.js`；
-- 不用 `file://` 访问。
+https://github.com/user-attachments/assets/ac0ad772-a503-47b1-89e3-691fbb4b09e0
 
-静态部署只有 WASM 人机与本地双人；大师和联机 API 不可用。
+### 完整攻击演示
 
-## 联机对弈
+https://github.com/user-attachments/assets/8aae6350-6348-47c0-bc0f-48be18bcc7e8
 
-点击左上角对弈模式中的“联机”，即可创建或加入联机房间；联机弹窗中的“退出联机 · 返回人机”可以随时清理房间连接并回到人机模式：
+## 对弈模式
 
-1. 创建者执红并获得 6 位房间编号；
-2. 对手通过邀请链接或编号加入并执黑；
-3. 服务端校验身份、行棋方、版本号和着法；
-4. 断线后客户端自动重连并从完整服务端棋谱恢复；
+| 模式 | 说明 | 是否需要 Rust 服务端 |
+|---|---|---|
+| godogpaw 人机 | 浏览器 Web Worker 中运行 WASM | 否 |
+| Pikafish 人机 | 服务端通过 UCI 调用 Pikafish 与 NNUE | 是 |
+| 本地双人 | 同一设备轮流行棋 | 否 |
+| 联机对弈 | 房间制 WebSocket 对局 | 是 |
+
+人机引擎与难度可以独立选择。Pikafish 不可用时只禁用 Pikafish 选项，不影响 godogpaw、本地双人和联机模式。
+
+联机对弈流程：
+
+1. 创建者执红并获得 6 位房间号和邀请链接；
+2. 对手加入后执黑；
+3. 服务端校验身份、行棋方、版本和着法；
+4. 断线后客户端自动重连并恢复服务端棋谱；
 5. 重开需要双方确认。
 
-联机模式暂不支持悔棋。房间 24 小时无活动后清理，服务重启后不会保留。
+联机模式暂不支持悔棋。房间 24 小时无活动后自动清理。
+
+## 从源码运行
+
+要求：
+
+- Rust 工具链和 Cargo
+- Node.js（运行前端检查时需要）
+- 支持 WebGL、WebAssembly、Web Worker 和 ES Modules 的现代浏览器
+
+启动开发服务：
+
+```bash
+./dev.sh
+```
+
+常用选项：
+
+```bash
+./dev.sh --verify                 # 检查 Rust 和 JavaScript 后启动
+./dev.sh --release                # 使用 release 构建
+./dev.sh --no-ai                  # 禁用 Pikafish
+./dev.sh --bind 127.0.0.1:8080    # 修改监听地址
+```
+
+源码仓库不包含大型 Pikafish 二进制和 NNUE。需要使用 Pikafish 时请自行配置：
+
+```bash
+PIKAFISH_PATH=/opt/pikafish/pikafish \
+PIKAFISH_NNUE=/opt/pikafish/pikafish.nnue \
+./dev.sh --release
+```
+
+只使用 godogpaw 人机和本地双人时，也可启动纯静态服务：
+
+```bash
+python3 -m http.server 8000
+```
+
+不要使用 `file://` 打开 `index.html`。纯静态模式不支持 Pikafish 和联机房间，生产环境还需为 `.wasm` 返回 `Content-Type: application/wasm`。
+
+## 配置
+
+| 环境变量 | 默认值 | 说明 |
+|---|---|---|
+| `CHESS_BIND` | `0.0.0.0:8000` | HTTP/WebSocket 监听地址 |
+| `PIKAFISH_PATH` | 自动查找 | Pikafish 可执行文件路径 |
+| `PIKAFISH_NNUE` | 自动查找 | NNUE 权重路径 |
+| `CHESS_AI_POOL_SIZE` | `2` | Pikafish 进程数，范围 1–32 |
+| `CHESS_AI_HASH_MB` | `32` | 每个进程的 Hash 内存，范围 1–1024 MB |
+| `CHESS_DISABLE_AI` | 未设置 | 设为 `1`、`true` 或 `yes` 时禁用 Pikafish |
+| `RUST_LOG` | 由启动方式决定 | Rust 日志过滤规则 |
 
 ## 操作
 
 - 点击己方棋子查看合法位置
 - 拖拽旋转视角，滚轮缩放
-- 顶部按钮：悔棋、换边、重开
+- 顶部按钮用于悔棋、换边和重开
 - 左上角切换人机、本地双人和联机模式
-- 人机模式下可分别选择 godogpaw/Pikafish 引擎和入门、中等、困难、大师难度
 - 按 `F` 进入或退出全屏，按 `Esc` 退出全屏
 
-## 测试
+## 开发与测试
 
 ```bash
 npm run check
-cargo test
+cargo fmt --all -- --check
+cargo clippy --all-targets -- -D warnings
+cargo test --locked
+cargo build --release --locked
 ```
 
-完整检查：
+重建仓库内的 godogpaw WASM：
 
 ```bash
-./dev.sh --verify
+bash ./build-godogpaw-wasm.sh
 ```
 
-浏览器回归重点：
-
-- 从其他页签切回后棋盘照明是否恢复；
-- godogpaw 四档难度搜索期间动画是否流畅；
-- Pikafish 缺失时是否只禁用 Pikafish 引擎；
-- 两种引擎和四档难度是否可以独立组合；
-- WebSocket 断线后是否能够恢复棋谱；
-- 移动设备是否能够加载约 3.5 MB 的 WASM。
-
-## 项目结构
-
-```text
-.
-├── assets/                     # GLB 模型、godogpaw WASM、第三方许可证
-├── css/style.css               # 页面与 HUD 样式
-├── js/
-│   ├── ai-engine.js            # Worker 生命周期、难度和 UCI 坐标适配
-│   ├── ai-worker.js            # WASM 加载、棋谱重放和搜索
-│   ├── board3d.js              # 棋盘和战场环境
-│   ├── fx.js                   # 战斗特效
-│   ├── main.js                 # Three.js 场景、交互、动画和模式编排
-│   ├── model-assets.js         # GLB 预加载和模型回退
-│   ├── pieces.js               # 拟人棋子与阵营外观
-│   ├── rules.js                # 浏览器规则引擎
-│   └── wasm_exec.js            # Go WebAssembly 运行时
-├── src/
-│   ├── engine.rs               # Pikafish UCI 进程池
-│   ├── main.rs                 # HTTP API 和嵌入式静态资源
-│   ├── online.rs               # 联机房间与 WebSocket
-│   └── rules.rs                # 服务端规则与棋谱校验
-├── test/                       # JavaScript 规则和 WASM 适配测试
-├── scripts/package-release.sh  # 跨平台发行目录与归档脚本
-├── .github/workflows/release.yml # 五平台构建、测试和标签发布
-├── .github/workflows/docker-publish.yml # Docker Hub 多架构镜像发布
-├── Dockerfile                  # amd64/arm64 双引擎多阶段镜像
-├── docker-build.sh             # 本地或多架构镜像构建/推送脚本
-├── build-godogpaw-wasm.sh      # 固定版本 WASM 重建脚本
-├── godogpaw.patch              # godogpaw 防御性规则补丁
-└── dev.sh                      # 开发、验证和启动脚本
-```
+该脚本需要 Go、Git、curl 和 tar，并会下载固定提交、应用补丁、运行测试后同步生成 WASM 与 `wasm_exec.js`。
 
 ## 项目来源与许可证
 
-### 3D 前端：tsonglew/chess-cn
+本项目的 3D 前端基础来自 [tsonglew/chess-cn](https://github.com/tsonglew/chess-cn)，并在其上增加 Rust 服务端、双人机引擎、联机房间和部署支持。原项目的 MIT 许可证保留于 [`LICENSES/MIT-tsonglew.txt`](LICENSES/MIT-tsonglew.txt)。
 
-- 来源：[https://github.com/tsonglew/chess-cn](https://github.com/tsonglew/chess-cn)
-- 许可证：MIT License
-- 版权声明：`Copyright (c) 2026 Tsonglew`
+主要第三方组件：
 
-本项目的 Three.js 3D 棋盘、拟人棋子、规则交互和战斗演出以前端项目 `tsonglew/chess-cn` 为基础，并在其上增加服务端、人机和联机能力。原项目 MIT 许可证和版权声明保留于 `LICENSES/MIT-tsonglew.txt`；本项目后续修改整体以 GPL-3.0-or-later 发布。
+- [hmgle/godogpaw](https://github.com/hmgle/godogpaw)：MIT License，编译为浏览器 WASM
+- [Three.js](https://threejs.org/)：MIT License，本地托管 r160
+- [Pikafish](https://github.com/official-pikafish/Pikafish)：GPL v3 引擎及单独授权的 NNUE 权重
+- Go `wasm_exec.js`：Go 项目 BSD 风格许可证
 
-棋子模型由原项目使用 Tripo v3.1 生成并进行 WebGL 优化；模型的进一步使用还应核对生成服务条款及原项目说明。
+项目代码采用 [`GPL-3.0-or-later`](LICENSE)。第三方代码、模型、引擎和权重继续适用各自的许可证与使用条款。
 
-### 浏览器人机：hmgle/godogpaw
-
-- 来源：[https://github.com/hmgle/godogpaw](https://github.com/hmgle/godogpaw)
-- 固定提交：`b135b58d1b45c2dc090bbc346a27cfbc6e08b2dd`
-- 许可证：MIT License
-- 版权声明：`Copyright (c) 2019 Mingang.He <dustgle@gmail.com>`
-
-本项目把 godogpaw 编译为 WASM，并应用仓库内的 `godogpaw.patch`。许可证副本位于 `assets/godogpaw-LICENSE.txt`。
-
-### Go WebAssembly 运行时
-
-`js/wasm_exec.js` 来自 Go 工具链，采用 Go 项目的 BSD 风格许可证。许可证副本位于 `assets/wasm_exec-LICENSE.txt`。
-
-### Three.js
-
-项目本地托管 Three.js r160 与相关 addons。Three.js 采用 MIT License，许可证位于 `vendor/three/LICENSE`。
-
-### Pikafish 与 NNUE
-
-- 引擎来源：[https://github.com/official-pikafish/Pikafish](https://github.com/official-pikafish/Pikafish)
-- 引擎许可证：[GNU General Public License v3.0](https://github.com/official-pikafish/Pikafish/blob/master/Copying.txt)
-- 权重说明：[https://github.com/official-pikafish/Networks](https://github.com/official-pikafish/Networks)
-
-源码仓库不提交大型 Pikafish 二进制和 NNUE。GitHub Actions 会在构建 Release 时下载固定的官方发布包，并把 Pikafish、NNUE、上游许可证与对应源码指针一起放入平台包。固定版本和校验值见 `third_party/pikafish/SOURCE.md`。
-
-需要区分以下情况：
-
-1. **运行者在自己的服务器安装并调用 Pikafish**：仍需遵守 Pikafish 和权重的适用条款。
-2. **本项目的完整发行包**：包含 Pikafish 的 GPL 文本、NNUE 条款、源码指针，并在同一 GitHub Release 上传固定标签的完整对应源码归档。
-3. **使用官方 `pikafish.nnue` 或其衍生权重**：官方 Networks 仓库明确写明“未经许可不得商业使用”。这与引擎源码的 GPL v3 是两套不同条件，不能因为引擎是 GPL 就推定权重可以商业使用。
-4. **商业远程引擎**：Pikafish 维护者在[官方讨论 #134](https://github.com/official-pikafish/Pikafish/discussions/134)中确认，仅在商业产品的后端服务器运行、客户端不分发引擎或权重，也属于需要申请的远程引擎授权场景。商业部署前应联系 `pikafishxq@outlook.com` 并取得适用于实际业务的书面授权。
-
-Pikafish 官方 README 还说明，其训练数据来源包含以 ODbL 提供的 Pika Xiangqi Zero 数据。若自行训练、修改或再分发权重，还需要继续核对训练数据和权重的具体条款。
-
-以上许可证说明用于帮助部署者识别风险，不构成法律意见。商业使用、二进制再分发、容器镜像分发或 NNUE 权重使用前，应以各上游仓库的最新许可证文件为准，并由专业人士复核。
-
-## License
-
-本项目代码采用根目录中的 GNU General Public License v3.0 or later（`GPL-3.0-or-later`）。GPL 允许商业使用，不能用 GPL 单独实现“禁止商业”。但完整发行包包含受非商业条款约束的官方 NNUE，所以该完整包严格仅供非商业使用；商业场景必须另行解决权重授权问题。
-
-原始 MIT/BSD 组件的版权与许可证声明继续保留。第三方代码、模型、引擎和权重分别适用其各自许可证与使用条款，不能由项目根许可证替代。
+Pikafish 引擎源码与官方 NNUE 权重适用不同条款。官方权重未经许可不得商业使用；完整发行包和 Docker 镜像因此严格仅供非商业使用。商业部署、再分发或远程引擎服务前，请阅读 [`DISTRIBUTION-NOTICE.md`](DISTRIBUTION-NOTICE.md) 和 [`third_party/pikafish/SOURCE.md`](third_party/pikafish/SOURCE.md)，并向 Pikafish 维护者取得适用于实际场景的授权。

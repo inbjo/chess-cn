@@ -1,0 +1,11 @@
+services:
+  chess-cn:
+    image: sina.dev/kudang/chess-cn:latest
+    container_name: chess-cn
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      CHESS_AI_POOL_SIZE: "${CHESS_AI_POOL_SIZE:-2}"
+      CHESS_AI_HASH_MB: "${CHESS_AI_HASH_MB:-32}"
+      RUST_LOG: "${RUST_LOG:-chess_cn_server=info}"
