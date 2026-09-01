@@ -74,7 +74,7 @@ WASM 在独立 Worker 中运行，搜索不会阻塞 Three.js 动画。不同设
 
 ```bash
 ./dev.sh
-# 打开 http://127.0.0.1:8000
+# 本机打开 http://127.0.0.1:8000，局域网设备打开 http://主机IP:8000
 ```
 
 常用选项：
@@ -89,6 +89,8 @@ WASM 在独立 Worker 中运行，搜索不会阻塞 Three.js 动画。不同设
 
 开发构建直接读取工作区前端文件；修改 HTML、CSS、JavaScript 后刷新浏览器即可。release 构建会嵌入前端资源，资源修改后必须重新执行 `cargo build --release`。
 
+默认监听所有网卡以方便局域网联机。请只在可信网络使用，并通过系统防火墙限制 TCP 8000；不要在没有 HTTPS、访问控制或反向代理保护时直接暴露到公网。如只需本机访问，使用 `./dev.sh --bind 127.0.0.1:8000`。
+
 ### 下载发行包
 
 推送 `v*` 标签后，GitHub Actions 会测试项目并发布以下完整包：
@@ -101,7 +103,7 @@ WASM 在独立 Worker 中运行，搜索不会阻塞 Three.js 动画。不同设
 | `chess-cn-macos-x86_64.tar.gz` | macOS Intel | 固定标签源码原生编译 |
 | `chess-cn-macos-aarch64.tar.gz` | macOS Apple Silicon | 官方发布二进制 |
 
-解压后直接运行根目录中的 `chess-cn-server`（Windows 为 `chess-cn-server.exe`）。服务端会自动发现同目录下 `pikafish/` 中的引擎和 NNUE，无需设置环境变量。默认监听 `127.0.0.1:8000`。
+解压后直接运行根目录中的 `chess-cn-server`（Windows 为 `chess-cn-server.exe`）。服务端会自动发现同目录下 `pikafish/` 中的引擎和 NNUE，无需设置环境变量。默认监听 `0.0.0.0:8000`，同一局域网设备可通过主机 IP 加入游戏。
 
 也可在 Actions 页面手动运行 **Build and release** 工作流；手动运行只生成可下载的 Actions Artifacts。创建并推送版本标签才会发布 GitHub Release：
 
@@ -152,7 +154,7 @@ cargo run --release
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `CHESS_BIND` | `127.0.0.1:8000` | Rust HTTP/WebSocket 监听地址 |
+| `CHESS_BIND` | `0.0.0.0:8000` | Rust HTTP/WebSocket 监听地址，默认允许局域网访问 |
 | `PIKAFISH_PATH` | 先找发行包内置引擎，再从 `PATH` 查找 | Pikafish 可执行文件路径；显式设置时优先级最高 |
 | `PIKAFISH_NNUE` | 自动查找引擎同目录的 `pikafish.nnue` | NNUE 权重路径；显式设置时优先级最高 |
 | `CHESS_AI_POOL_SIZE` | `2` | 常驻 Pikafish 进程上限，范围 1–32 |
@@ -189,9 +191,91 @@ WASM 与 `wasm_exec.js` 必须由兼容的 Go 工具链一起生成，不应只�
 
 ## 生产部署
 
-### 方案一：单个 Rust 可执行文件
+### 方案一：Docker（内置双人机引擎）
 
-这是支持全部功能的推荐方案。
+镜像采用多阶段构建，支持 `linux/amd64` 和 `linux/arm64`：
+
+- `index.html`、CSS、JavaScript、Three.js、模型和 godogpaw WASM 全部由 `rust-embed` 内嵌在 `chess-cn-server`；
+- Pikafish 原生程序和 `pikafish.nnue` 放在镜像的 `/opt/chess-cn/pikafish/`；
+- amd64 使用固定官方 SSE4.1 + POPCNT 二进制，arm64 从同一固定提交以 `ARCH=armv8` 编译；
+- 镜像同时携带第三方许可证、NNUE 条款和 Pikafish 完整对应源码归档；
+- 最终容器以 UID/GID `10001` 非 root 用户运行。
+
+构建当前主机架构并载入本地 Docker：
+
+```bash
+./docker-build.sh --tag chess-cn:local
+docker run --rm -p 8000:8000 chess-cn:local
+```
+
+打开 <http://127.0.0.1:8000>，或检查：
+
+```bash
+curl http://127.0.0.1:8000/api/health
+curl http://127.0.0.1:8000/api/ai/status
+```
+
+构建单独的 ARM64 镜像：
+
+```bash
+./docker-build.sh --platform linux/arm64 --tag chess-cn:arm64
+```
+
+构建并推送 amd64/arm64 多架构镜像：
+
+```bash
+docker login ghcr.io
+./docker-build.sh \
+  --platform linux/amd64,linux/arm64 \
+  --tag ghcr.io/inbjo/chess-cn:v0.1.0 \
+  --push
+```
+
+#### GitHub Actions 自动发布到 Docker Hub
+
+工作流 `.github/workflows/docker-publish.yml` 会发布到 `kudang/chess-cn`：
+
+- 推送 `master`：更新 `kudang/chess-cn:latest` 和 `sha-<提交>`；
+- 推送 `v1.2.3` 标签：发布 `1.2.3`、`1.2`、`latest` 和 `sha-<提交>`；
+- 在 Actions 页面手动运行：按当前默认分支构建并发布；
+- 每个标签都是同时支持 `linux/amd64` 和 `linux/arm64` 的 manifest list。
+
+首次运行前，在 GitHub 仓库的 **Settings → Secrets and variables → Actions** 中配置：
+
+1. Repository variable：`DOCKERHUB_USERNAME`，值为 `kudang`；
+2. Repository secret：`DOCKERHUB_TOKEN`，值为 Docker Hub 创建的 Personal Access Token，权限至少为 Read & Write；
+3. 可选 Repository variable：`GITHUB_DOWNLOAD_PROXY`；默认使用 `https://sina.dev/`，设置为 `direct` 时直连 GitHub，也可填写其他兼容代理前缀。
+
+不要把 Docker Hub 登录密码或 Token 写进 YAML、提交记录或普通变量。配置完成并提交工作流后，可在 GitHub Actions 页面手动运行，或推送版本标签：
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+拉取并运行：
+
+```bash
+docker pull kudang/chess-cn:latest
+docker run --rm -p 8000:8000 kudang/chess-cn:latest
+```
+
+多架构构建通常通过 BuildKit/QEMU 执行 ARM64 的原生编译，首次构建 Pikafish 会比较慢。可通过环境变量覆盖并发和内存，例如：
+
+```bash
+docker run --rm -p 8000:8000 \
+  -e CHESS_AI_POOL_SIZE=1 \
+  -e CHESS_AI_HASH_MB=32 \
+  chess-cn:local
+```
+
+构建脚本默认通过 `https://sina.dev/` 获取固定的 GitHub 归档，并对源码和官方发布包执行 SHA-256 校验。网络可直连 GitHub 时可用 `CHESS_GITHUB_PROXY= ./docker-build.sh` 关闭代理。
+
+完整镜像包含受非商业条款约束的官方 NNUE，因此仍严格仅供非商业使用。
+
+### 方案二：单个 Rust 可执行文件
+
+不使用容器时，可部署单个 Rust 服务端并在旁边放置 Pikafish 与 NNUE。
 
 #### 1. 构建与验证
 
@@ -224,7 +308,7 @@ release 二进制已嵌入前端、WASM 和模型。部署时不需要额外复�
 `/opt/chess-cn/chess-cn.env` 示例：
 
 ```bash
-CHESS_BIND=127.0.0.1:8000
+CHESS_BIND=0.0.0.0:8000
 RUST_LOG=chess_cn_server=info
 PIKAFISH_PATH=/opt/pikafish/pikafish
 PIKAFISH_NNUE=/opt/pikafish/pikafish.nnue
@@ -427,6 +511,9 @@ cargo test
 ├── test/                       # JavaScript 规则和 WASM 适配测试
 ├── scripts/package-release.sh  # 跨平台发行目录与归档脚本
 ├── .github/workflows/release.yml # 五平台构建、测试和标签发布
+├── .github/workflows/docker-publish.yml # Docker Hub 多架构镜像发布
+├── Dockerfile                  # amd64/arm64 双引擎多阶段镜像
+├── docker-build.sh             # 本地或多架构镜像构建/推送脚本
 ├── build-godogpaw-wasm.sh      # 固定版本 WASM 重建脚本
 ├── godogpaw.patch              # godogpaw 防御性规则补丁
 └── dev.sh                      # 开发、验证和启动脚本

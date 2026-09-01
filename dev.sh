@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-bind_addr="${CHESS_BIND:-127.0.0.1:8000}"
+bind_addr="${CHESS_BIND:-0.0.0.0:8000}"
 build_mode="debug"
 run_verify=0
 disable_ai=0
@@ -15,7 +15,7 @@ usage() {
   --release        使用 release 构建启动
   --verify         启动前运行 Rust/JavaScript 完整检查
   --no-ai          禁用 Pikafish 引擎；godogpaw 人机仍可使用
-  --bind ADDR      指定监听地址，默认 127.0.0.1:8000
+  --bind ADDR      指定监听地址，默认 0.0.0.0:8000（允许局域网访问）
   -h, --help       显示帮助
 
 环境变量：

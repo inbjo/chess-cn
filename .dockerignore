@@ -1,0 +1,13 @@
+.git
+.github
+.agents
+.codex
+.release-cache
+.playwright-mcp
+target
+dist
+output
+progress.md
+.DS_Store
+Dockerfile*
+docker-build.sh

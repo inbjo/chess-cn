@@ -99,7 +99,7 @@ async fn main() {
         .with_state(state);
 
     let address: SocketAddr = std::env::var("CHESS_BIND")
-        .unwrap_or_else(|_| "127.0.0.1:8000".to_owned())
+        .unwrap_or_else(|_| "0.0.0.0:8000".to_owned())
         .parse()
         .expect("CHESS_BIND must be a valid socket address");
     let listener = tokio::net::TcpListener::bind(address)
