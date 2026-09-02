@@ -125,8 +125,8 @@ npx wrangler pages deploy dist-cloudflare --project-name=chess-cn
 中国境内可以在 GitHub URL 前增加 `https://sina.dev/`，例如：
 
 ```bash
-curl -fLO https://sina.dev/https://github.com/inbjo/chess-cn/releases/download/v1.0.0/chess-cn-linux-x86_64.tar.gz
-curl -fLO https://sina.dev/https://github.com/inbjo/chess-cn/releases/download/v1.0.0/SHA256SUMS
+curl -fLO https://sina.dev/https://github.com/inbjo/chess-cn/releases/download/v1.1.0/chess-cn-linux-x86_64.tar.gz
+curl -fLO https://sina.dev/https://github.com/inbjo/chess-cn/releases/download/v1.1.0/SHA256SUMS
 sha256sum -c SHA256SUMS --ignore-missing
 ```
 
