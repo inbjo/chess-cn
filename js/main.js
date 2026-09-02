@@ -2,10 +2,10 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import * as R from './rules.js?v=20260901.3';
-import { createPieceMesh } from './pieces.js?v=20260902.3';
+import { createPieceMesh, preloadPieceGlyphFont } from './pieces.js?v=20260902.5';
 import { preloadPieceModels } from './model-assets.js?v=20260901.3';
-import { BOARD_H, BOARD_W, CELL, createBoard, createMarkers, createEnvironment, squareToWorld } from './board3d.js?v=20260902.1';
-import { FX } from './fx.js?v=20260901.3';
+import { BOARD_H, BOARD_W, CELL, createBoard, createMarkers, createEnvironment, squareToWorld } from './board3d.js?v=20260902.3';
+import { FX } from './fx.js?v=20260902.2';
 import { probeWasmAi, resetWasmAi, searchWasmAi, uciToMove } from './ai-engine.js?v=20260902.1';
 import { buildRoomInviteUrl, copyTextToClipboard } from './online-utils.js?v=20260901.4';
 import { findSnappedLegalMove, isPrimaryPointerActivation, pointerTapTolerance } from './interaction-utils.js?v=20260902.1';
@@ -25,6 +25,11 @@ const initialVisualPreferences = loadVisualPreferences(visualPreferenceStorage, 
 let displayMode = initialVisualPreferences.displayMode;
 let motionMode = initialVisualPreferences.motionMode;
 let hasSavedMotionMode = initialVisualPreferences.hasSavedMotionMode;
+const bootText = document.getElementById('bootText');
+const pieceGlyphFontPromise = preloadPieceGlyphFont();
+const pieceModelsPromise = preloadPieceModels((completed, total) => {
+  if (bootText) bootText.textContent = `正在点将 · 重塑战阵 ${completed}/${total}`;
+});
 document.documentElement.dataset.motion = motionMode;
 
 function requiredElement(id) {
@@ -120,6 +125,7 @@ accent.position.set(0, 7, 0);
 scene.add(accent);
 
 // ---------- 棋盘 / 环境 ----------
+await pieceGlyphFontPromise;
 scene.add(createBoard());
 const env = createEnvironment();
 scene.add(env.group);
@@ -1915,13 +1921,12 @@ window.set_visual_preferences_for_test = preferences => {
   return true;
 };
 
-const bootText = document.getElementById('bootText');
-window.__tripoModelCount = await preloadPieceModels((completed, total) => {
-  if (bootText) bootText.textContent = `正在点将 · 重塑战阵 ${completed}/${total}`;
-});
+window.__tripoModelCount = await pieceModelsPromise;
 if (deterministicTestMode && DISPLAY_MODES.includes(pageParams.get('display'))) displayMode = pageParams.get('display');
 if (deterministicTestMode && MOTION_MODES.includes(pageParams.get('motion'))) motionMode = pageParams.get('motion');
 buildAllPieces();
+fx.warmup(renderer, camera, piecesGroup);
+markers.finishWarmup();
 applyDisplayMode(displayMode, false, false);
 applyMotionMode(motionMode, false, false);
 refreshHUD();

@@ -24,6 +24,31 @@ const GLYPH_MATERIAL_CACHE = new Map();
 const BADGE_TEXTURE_CACHE = new Map();
 const MERGED_FIGURE_CACHE = new Map();
 const HIT_MATERIAL = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false });
+const PIECE_GLYPH_FONT_FAMILY = '"Noto Serif SC", "Songti SC", "STSong", serif';
+const PIECE_GLYPHS = [...new Set([...Object.values(GLYPH).flatMap(side => Object.values(side)), ...'楚河漢界'])].join('');
+
+export async function preloadPieceGlyphFont() {
+  if (!document.fonts?.load) return false;
+  let timer;
+  try {
+    const loaded = await Promise.race([
+      document.fonts.load(`900 148px ${PIECE_GLYPH_FONT_FAMILY}`, PIECE_GLYPHS).then(() => true),
+      new Promise(resolve => { timer = setTimeout(() => resolve(false), 3000); }),
+    ]);
+    return loaded && document.fonts.check(`900 148px ${PIECE_GLYPH_FONT_FAMILY}`, PIECE_GLYPHS);
+  } catch (_) {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function drawPieceGlyph(ctx, text, size, centerY) {
+  ctx.font = `900 ${size}px ${PIECE_GLYPH_FONT_FAMILY}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 128, centerY);
+}
 
 function std(color, rough = 0.55, metal = 0.3) {
   const key = `${color}:${rough}:${metal}`;
@@ -167,11 +192,8 @@ function glyphTexture(text, bg, ink, ring) {
   ctx.stroke();
   ctx.globalAlpha = 1;
   ctx.fillStyle = ink;
-  // 棋子需使用覆盖完整繁简字形的同一字体，避免 Ma Shan Zheng 缺字后局部回退造成混排。
-  ctx.font = '900 148px "Noto Serif SC", "Songti SC", "STSong", serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(text, 128, 136);
+  // 棋子需使用覆盖完整繁简字形的同一字体，避免缺字后局部回退造成混排。
+  drawPieceGlyph(ctx, text, 148, 136);
   const tex = new THREE.CanvasTexture(c);
   tex.anisotropy = 4;
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -252,10 +274,7 @@ function identityBadgeTexture(text, color) {
   ctx.shadowColor = glow;
   ctx.shadowBlur = 8;
   ctx.fillStyle = ink;
-  ctx.font = '900 126px "Noto Serif SC", "Songti SC", "STSong", serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(text, 128, 132);
+  drawPieceGlyph(ctx, text, 126, 132);
 
   // 令牌下方的小铆钉让标识更像军阵器物，而不是普通 UI 气泡。
   ctx.shadowColor = 'transparent';

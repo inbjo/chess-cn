@@ -7,6 +7,47 @@ export class FX {
     this.items = [];
   }
 
+  warmup(renderer, camera, pieces) {
+    const group = new THREE.Group();
+    const meshes = [
+      new THREE.Mesh(new THREE.ConeGeometry(0.26, 1.05, 10), new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false })),
+      new THREE.Mesh(new THREE.SphereGeometry(0.4, 14, 12), new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false })),
+      new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.15, 0.9, 8), new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false })),
+      new THREE.Mesh(new THREE.RingGeometry(0.5, 0.72, 32), new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: false })),
+      new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6), new THREE.MeshStandardMaterial({ transparent: true, roughness: 1 })),
+    ];
+    const pointsGeometry = new THREE.BufferGeometry();
+    pointsGeometry.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0], 3));
+    meshes.push(new THREE.Points(pointsGeometry, new THREE.PointsMaterial({ transparent: true, depthWrite: false })));
+    const captureMaterials = new Set();
+    pieces?.traverse(child => {
+      if (!child.isMesh) return;
+      const materials = Array.isArray(child.material) ? child.material : [child.material];
+      for (const material of materials) {
+        if (!material || material.colorWrite === false || captureMaterials.has(material)) continue;
+        captureMaterials.add(material);
+        const transparentMaterial = material.clone();
+        transparentMaterial.transparent = true;
+        meshes.push(new THREE.Mesh(child.geometry, transparentMaterial));
+      }
+    });
+    for (const mesh of meshes) {
+      mesh.scale.setScalar(0.001);
+      group.add(mesh);
+    }
+    const lights = [new THREE.PointLight(0xff8a3c, 0), new THREE.PointLight(0xff7a30, 0)];
+    group.add(...lights);
+    group.position.y = 1;
+    this.scene.add(group);
+    renderer.compile(this.scene, camera);
+    group.remove(lights[1]);
+    renderer.compile(this.scene, camera);
+    group.remove(lights[0]);
+    renderer.compile(this.scene, camera);
+    this.scene.remove(group);
+    this.warmupGroup = group;
+  }
+
   add(obj, update, onDone) {
     this.items.push({ obj, update, onDone });
     this.scene.add(obj);

@@ -5,6 +5,7 @@
   --paper: #eee0bf;
   --red: #ff6a55;
   --blue: #7fa8ff;
+  --font-chinese: "Noto Serif SC", "Songti SC", "STSong", serif;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -13,7 +14,7 @@ html, body {
   height: 100%;
   overflow: hidden;
   background: radial-gradient(circle at 50% 42%, #382516 0, #17100b 44%, #090706 100%);
-  font-family: "Noto Serif SC", "Songti SC", "STSong", serif;
+  font-family: var(--font-chinese);
   color: var(--paper);
 }
 
@@ -59,7 +60,7 @@ body.general-cinematic-active .demo-trigger {
   pointer-events: none;
 }
 #bootScreen.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
-.boot-emblem { display: flex; align-items: center; gap: 18px; font-family: "Ma Shan Zheng", "STKaiti", serif; font-size: 54px; }
+.boot-emblem { display: flex; align-items: center; gap: 18px; font-family: var(--font-chinese); font-size: 54px; font-weight: 900; }
 .boot-emblem span:first-child { color: #ef755d; text-shadow: 0 0 25px rgba(218, 62, 38, 0.55); }
 .boot-emblem span:last-child { color: #9bbbea; text-shadow: 0 0 25px rgba(77, 124, 199, 0.55); }
 .boot-emblem i { width: 1px; height: 46px; background: linear-gradient(transparent, #d4ad62, transparent); transform: rotate(24deg); }
@@ -79,7 +80,7 @@ body.general-cinematic-active .demo-trigger {
   transform: translateX(-50%);
   padding: 10px 24px;
   color: #2a1608;
-  font: 700 14px/1 "Noto Serif SC", "Songti SC", serif;
+  font: 700 14px/1 var(--font-chinese);
   letter-spacing: 3px;
   background: linear-gradient(145deg, #f1ce83, #b8873e);
   border: 1px solid #ffdf99;
@@ -109,17 +110,18 @@ body.general-cinematic-active .demo-trigger {
   background: linear-gradient(145deg, #a02318, #6d1512);
   border: 2px solid var(--gold);
   border-radius: 8px;
-  font-family: "Ma Shan Zheng", serif;
+  font-family: var(--font-chinese);
   font-size: 30px;
+  font-weight: 900;
   color: #ffd9a0;
   box-shadow: 0 4px 18px rgba(160, 35, 24, 0.45);
   transform: rotate(-4deg);
 }
 
 .brand h1 {
-  font-family: "Ma Shan Zheng", serif;
+  font-family: var(--font-chinese);
   font-size: 30px;
-  font-weight: 400;
+  font-weight: 900;
   letter-spacing: 6px;
   color: var(--gold-bright);
   text-shadow: 0 2px 12px rgba(201, 162, 90, 0.35);
@@ -155,7 +157,7 @@ body.general-cinematic-active .demo-trigger {
 
 .actions { display: flex; gap: 10px; }
 .actions button {
-  font-family: "Noto Serif SC", serif;
+  font-family: var(--font-chinese);
   font-size: 14px;
   letter-spacing: 2px;
   padding: 8px 16px;
@@ -220,7 +222,7 @@ body.general-cinematic-active .demo-trigger {
   min-height: 42px;
   padding: 5px 11px;
   color: inherit;
-  font-family: "Noto Serif SC", "Songti SC", serif;
+  font-family: var(--font-chinese);
   text-align: left;
   background: transparent;
   border: 0;
@@ -272,7 +274,7 @@ body.general-cinematic-active .demo-trigger {
   min-width: 58px;
   padding: 5px 6px;
   color: #f3d99f;
-  font: 600 11px/1 "Noto Serif SC", "Songti SC", serif;
+  font: 600 11px/1 var(--font-chinese);
   background: #21160f;
   border: 1px solid rgba(205, 164, 91, 0.34);
   border-radius: 4px;
@@ -289,7 +291,7 @@ body.general-cinematic-active .demo-trigger {
 .ai-choice select {
   min-width: 72px;
   color: #f3d99f;
-  font: 600 11px/1 "Noto Serif SC", "Songti SC", serif;
+  font: 600 11px/1 var(--font-chinese);
   background: #21160f;
   border: 1px solid rgba(205, 164, 91, 0.34);
   border-radius: 4px;
@@ -384,7 +386,7 @@ body.classic-view #scene { cursor: default; }
   place-items: center;
   margin: 0 auto 14px;
   color: #ffd59a;
-  font: 400 28px/1 "Ma Shan Zheng", "STKaiti", serif;
+  font: 900 28px/1 var(--font-chinese);
   background: #7f2018;
   border: 2px solid #d4a75e;
   box-shadow: 0 0 22px rgba(180, 48, 30, 0.35);
@@ -394,7 +396,7 @@ body.classic-view #scene { cursor: default; }
 .online-card h2 {
   margin: 6px 0 10px;
   color: var(--gold-bright);
-  font: 400 30px/1.3 "Ma Shan Zheng", "STKaiti", serif;
+  font: 900 30px/1.3 var(--font-chinese);
   letter-spacing: 5px;
 }
 .online-message { min-height: 42px; color: rgba(238, 224, 191, 0.62); font-size: 13px; line-height: 1.7; }
@@ -403,7 +405,7 @@ body.classic-view #scene { cursor: default; }
 .online-join button,
 .room-ticket button {
   color: #231508;
-  font: 600 13px/1 "Noto Serif SC", serif;
+  font: 600 13px/1 var(--font-chinese);
   letter-spacing: 2px;
   background: linear-gradient(145deg, #efcf89, #b9853e);
   border: 0;
@@ -431,6 +433,7 @@ body.classic-view #scene { cursor: default; }
   border-radius: 5px;
   outline: none;
 }
+.online-join input::placeholder { font-family: var(--font-chinese); }
 .online-join input:focus { border-color: #e2b765; box-shadow: 0 0 0 2px rgba(226, 183, 101, 0.12); }
 .online-join button { padding: 0 15px; }
 .room-ticket {
@@ -447,7 +450,7 @@ body.classic-view #scene { cursor: default; }
   margin-top: 18px;
   padding: 9px 13px;
   color: rgba(238, 224, 191, 0.64);
-  font: 500 11px/1 "Noto Serif SC", serif;
+  font: 500 11px/1 var(--font-chinese);
   letter-spacing: 2px;
   background: transparent;
   border: 1px solid rgba(205, 164, 91, 0.3);
@@ -513,8 +516,9 @@ body.classic-view #scene { cursor: default; }
   top: 22%;
   left: 50%;
   transform: translate(-50%, -50%) scale(0.6);
-  font-family: "Ma Shan Zheng", serif;
+  font-family: var(--font-chinese);
   font-size: 84px;
+  font-weight: 900;
   color: #ff5040;
   text-shadow: 0 0 30px rgba(255, 60, 40, 0.8), 0 0 80px rgba(255, 60, 40, 0.4);
   opacity: 0;
@@ -594,8 +598,9 @@ body.classic-view #scene { cursor: default; }
 }
 #generalCinematic.active .cinematic-title { animation: cinematicTitle 1.05s 0.12s cubic-bezier(0.18, 0.9, 0.2, 1) both; }
 .cinematic-title span {
-  font-family: "Ma Shan Zheng", "STKaiti", serif;
+  font-family: var(--font-chinese);
   font-size: clamp(112px, 19vw, 240px);
+  font-weight: 900;
   line-height: 0.72;
   text-shadow: 3px 3px 0 rgba(20, 8, 2, 0.8), 0 0 42px rgba(var(--cinematic-color), 0.5);
 }
@@ -674,9 +679,9 @@ body.classic-view #scene { cursor: default; }
 }
 #overlay.show .overlay-card { transform: translateY(0); }
 #resultText {
-  font-family: "Ma Shan Zheng", serif;
+  font-family: var(--font-chinese);
   font-size: 110px;
-  font-weight: 400;
+  font-weight: 900;
   letter-spacing: 14px;
   color: var(--red);
   text-shadow: 0 0 50px rgba(255, 90, 60, 0.4);
@@ -688,7 +693,7 @@ body.classic-view #scene { cursor: default; }
   margin: 10px 0 36px;
 }
 #btnAgain {
-  font-family: "Noto Serif SC", serif;
+  font-family: var(--font-chinese);
   font-size: 17px;
   font-weight: 600;
   letter-spacing: 6px;

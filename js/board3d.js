@@ -114,7 +114,7 @@ function boardTexture() {
   // 楚河漢界
   ctx.shadowBlur = 12;
   ctx.fillStyle = '#d8b878';
-  ctx.font = `900 ${Math.round(S * 0.62)}px "Ma Shan Zheng", "Noto Serif SC", serif`;
+  ctx.font = `900 ${Math.round(S * 0.62)}px "Noto Serif SC", "Songti SC", "STSong", serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   const ry = (gy(4) + gy(5)) / 2;
@@ -211,18 +211,29 @@ export function createBoard() {
 // ---- 走法标记 ----
 export function createMarkers() {
   const group = new THREE.Group();
-  const moveMt = new THREE.MeshBasicMaterial({ color: 0x7fd4a8, transparent: true, opacity: 0.85, depthWrite: false });
-  const capMt = new THREE.MeshBasicMaterial({ color: 0xff5a4a, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide });
-  const selMt = new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide });
-  const responseMt = new THREE.MeshBasicMaterial({ color: 0x79e6bd, transparent: true, opacity: 0.92, depthWrite: false, side: THREE.DoubleSide });
-  const lastMt = new THREE.MeshBasicMaterial({ color: 0x8fb8ff, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide });
-  const moveGeo = new THREE.CircleGeometry(0.3, 24);
+  const moveMt = new THREE.MeshBasicMaterial({ color: 0x7fd4a8, transparent: true, opacity: 0.85, depthWrite: false, depthTest: false });
+  const capMt = new THREE.MeshBasicMaterial({ color: 0xff5a4a, transparent: true, opacity: 0.9, depthWrite: false, depthTest: false, side: THREE.DoubleSide });
+  const selMt = new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.9, depthWrite: false, depthTest: false, side: THREE.DoubleSide });
+  const responseMt = new THREE.MeshBasicMaterial({ color: 0x79e6bd, transparent: true, opacity: 0.92, depthWrite: false, depthTest: false, side: THREE.DoubleSide });
+  const lastMt = new THREE.MeshBasicMaterial({ color: 0x8fb8ff, transparent: true, opacity: 0.5, depthWrite: false, depthTest: false, side: THREE.DoubleSide });
+  const moveGeo = new THREE.CircleGeometry(0.3, 32);
   const capGeo = new THREE.RingGeometry(1.2, 1.38, 36);
   const selectGeo = new THREE.RingGeometry(1.24, 1.38, 36);
   const responseGeo = new THREE.RingGeometry(1.42, 1.57, 36);
   const lastGeo = new THREE.RingGeometry(1.18, 1.3, 36);
+  const warmup = new THREE.Group();
+  for (const [geo, material] of [[moveGeo, moveMt], [capGeo, capMt], [selectGeo, selMt], [responseGeo, responseMt], [lastGeo, lastMt]]) {
+    const mesh = new THREE.Mesh(geo, material);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.scale.setScalar(0.001);
+    mesh.renderOrder = 900;
+    warmup.add(mesh);
+  }
+  warmup.position.y = TOP_Y + 0.05;
+  group.add(warmup);
   return {
     group,
+    finishWarmup() { group.remove(warmup); },
     clear() { while (group.children.length) group.remove(group.children[0]); },
     showMoves(moves, pieces, pieceAtFn) {
       for (const m of moves) {
@@ -235,7 +246,8 @@ export function createMarkers() {
           mesh = new THREE.Mesh(moveGeo, moveMt);
         }
         mesh.rotation.x = -Math.PI / 2;
-        mesh.position.set(x, TOP_Y + 0.02, z);
+        mesh.position.set(x, TOP_Y + 0.05, z);
+        mesh.renderOrder = isCap ? 910 : 900;
         mesh.userData.moveTo = m;
         group.add(mesh);
       }
@@ -244,7 +256,8 @@ export function createMarkers() {
       const { x, z } = squareToWorld(row, col);
       const ring = new THREE.Mesh(selectGeo, selMt);
       ring.rotation.x = -Math.PI / 2;
-      ring.position.set(x, TOP_Y + 0.02, z);
+      ring.position.set(x, TOP_Y + 0.05, z);
+      ring.renderOrder = 930;
       ring.userData.isSelectRing = true;
       group.add(ring);
     },
@@ -253,7 +266,8 @@ export function createMarkers() {
         const { x, z } = squareToWorld(piece.row, piece.col);
         const ring = new THREE.Mesh(responseGeo, responseMt);
         ring.rotation.x = -Math.PI / 2;
-        ring.position.set(x, TOP_Y + 0.025, z);
+        ring.position.set(x, TOP_Y + 0.05, z);
+        ring.renderOrder = 925;
         ring.userData.isResponseHint = true;
         group.add(ring);
       }
@@ -263,7 +277,8 @@ export function createMarkers() {
         const { x, z } = squareToWorld(sq.row, sq.col);
         const ring = new THREE.Mesh(lastGeo, lastMt);
         ring.rotation.x = -Math.PI / 2;
-        ring.position.set(x, TOP_Y + 0.015, z);
+        ring.position.set(x, TOP_Y + 0.04, z);
+        ring.renderOrder = 880;
         ring.userData.isLastMark = true;
         group.add(ring);
       }
@@ -332,7 +347,7 @@ function bannerTexture(char, field, ink) {
   ctx.fillStyle = field;
   ctx.fillRect(240, 8, 16, 152);
   ctx.fillStyle = ink;
-  ctx.font = '900 104px "Ma Shan Zheng", "Noto Serif SC", serif';
+  ctx.font = '900 104px "Noto Serif SC", "Songti SC", "STSong", serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(char, 128, 92);
