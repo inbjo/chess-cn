@@ -3,5 +3,6 @@ output/
 .DS_Store
 target/
 dist/
+dist-cloudflare/
 .release-cache/
 .playwright-mcp/

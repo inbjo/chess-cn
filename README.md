@@ -77,6 +77,35 @@ CHESS_AI_POOL_SIZE=1 CHESS_AI_HASH_MB=32 docker compose up -d
 
 也可以编辑 `docker-compose.yml` 中的 `environment`。所有可用变量见[配置](#配置)。
 
+## Cloudflare Pages 部署（纯静态专版）
+
+Cloudflare Pages 专版只保留浏览器内运行的 **godogpaw WASM 人机**和**本地双人**，构建时会移除 Pikafish 与联机入口。普通源码页面、二进制发行包和 Docker 镜像仍保留完整功能。
+
+生成专用静态目录：
+
+```bash
+npm run build:cloudflare
+```
+
+产物位于 `dist-cloudflare/`。构建脚本会复制页面所需资源、写入静态部署标记、裁剪服务端功能入口，并检查 Cloudflare Pages 的单文件大小与文件数量限制。
+
+使用 Cloudflare Dashboard 连接本仓库时，在 **Workers & Pages → Create application → Pages → Connect to Git** 中填写：
+
+| 设置 | 值 |
+|---|---|
+| Framework preset | `None` |
+| Build command | `npm run build:cloudflare` |
+| Build output directory | `dist-cloudflare` |
+| Root directory | 留空（仓库根目录） |
+
+保存后触发部署即可获得 `*.pages.dev` 地址。也可以使用 Wrangler 直接上传：
+
+```bash
+npx wrangler pages deploy dist-cloudflare --project-name=chess-cn
+```
+
+> Pages 是纯静态托管环境，不会运行仓库中的 Rust 服务端或原生 Pikafish 进程，因此该专版不提供 Pikafish、联机房间、WebSocket 和 `/api/*` 接口。
+
 ## 二进制部署
 
 不使用容器时，可以下载完整发行包，或从源码构建单个 Rust 服务端。release 二进制已嵌入 HTML、CSS、JavaScript、WASM 和模型，无需额外部署前端文件。
@@ -109,7 +138,7 @@ cd chess-cn-linux-x86_64
 ./chess-cn-server
 ```
 
-Windows 解压后运行 `chess-cn-server.exe`，macOS 解压后运行 `./chess-cn-server`。服务端会自动发现同目录 `pikafish/` 下的引擎和 NNUE，默认监听 `0.0.0.0:8000`。
+Windows 解压后运行 `chess-cn-server.exe`，macOS 解压后运行 `./chess-cn-server`。服务端会自动发现同目录 `pikafish/` 下的引擎和 NNUE，并随机选择一个可用端口；控制台会显示实际访问地址。Windows 和 macOS 会自动打开默认浏览器，Linux 仅在检测到图形会话时自动打开，纯服务器环境不受影响。
 
 > Linux x86_64 的内置 Pikafish 需要 SSE4.1 和 POPCNT 指令集。每个 Release 同时提供 `SHA256SUMS` 和固定 Pikafish 版本的对应源码归档。
 
@@ -329,7 +358,8 @@ python3 -m http.server 8000
 
 | 环境变量 | 默认值 | 说明 |
 |---|---|---|
-| `CHESS_BIND` | `0.0.0.0:8000` | HTTP/WebSocket 监听地址 |
+| `CHESS_BIND` | `0.0.0.0:0` | HTTP/WebSocket 监听地址；端口 `0` 表示由系统随机选择可用端口，Docker 镜像固定为 `0.0.0.0:8000` |
+| `CHESS_OPEN_BROWSER` | `true` | 是否自动打开默认浏览器；Linux 还需存在图形会话，Docker 镜像固定为 `false` |
 | `PIKAFISH_PATH` | 自动查找 | Pikafish 可执行文件路径 |
 | `PIKAFISH_NNUE` | 自动查找 | NNUE 权重路径 |
 | `CHESS_AI_POOL_SIZE` | `2` | Pikafish 进程数，范围 1–32 |

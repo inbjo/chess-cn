@@ -2,7 +2,12 @@ mod engine;
 mod online;
 mod rules;
 
-use std::{net::SocketAddr, sync::Arc};
+use std::{
+    io,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    process::{Command, Stdio},
+    sync::Arc,
+};
 
 use axum::{
     Json, Router,
@@ -99,17 +104,99 @@ async fn main() {
         .with_state(state);
 
     let address: SocketAddr = std::env::var("CHESS_BIND")
-        .unwrap_or_else(|_| "0.0.0.0:8000".to_owned())
+        .unwrap_or_else(|_| "0.0.0.0:0".to_owned())
         .parse()
         .expect("CHESS_BIND must be a valid socket address");
     let listener = tokio::net::TcpListener::bind(address)
         .await
         .expect("failed to bind server");
-    info!(%address, "chess server listening");
+    let bound_address = listener
+        .local_addr()
+        .expect("failed to read bound server address");
+    let browser_url = local_browser_url(bound_address);
+
+    println!();
+    println!("楚河漢界 · 3D 中国象棋");
+    println!("请访问 {browser_url} 进行对战。");
+    println!("按 Ctrl+C 停止服务。");
+    println!();
+
+    info!(address = %bound_address, "chess server listening");
+    if browser_open_enabled()
+        && desktop_session_available()
+        && let Err(error) = open_browser(&browser_url)
+    {
+        warn!(%error, "failed to open the default browser");
+        eprintln!("未能自动打开默认浏览器，请手动访问 {browser_url}");
+    }
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await
         .expect("server failed");
+}
+
+fn local_browser_url(address: SocketAddr) -> String {
+    let ip = match address.ip() {
+        IpAddr::V4(ip) if ip.is_unspecified() => IpAddr::V4(Ipv4Addr::LOCALHOST),
+        IpAddr::V6(ip) if ip.is_unspecified() => IpAddr::V6(Ipv6Addr::LOCALHOST),
+        ip => ip,
+    };
+    format!("http://{}", SocketAddr::new(ip, address.port()))
+}
+
+fn browser_open_enabled() -> bool {
+    std::env::var("CHESS_OPEN_BROWSER")
+        .map(|value| {
+            !matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "0" | "false" | "no"
+            )
+        })
+        .unwrap_or(true)
+}
+
+fn desktop_session_available() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        std::env::var_os("DISPLAY").is_some() || std::env::var_os("WAYLAND_DISPLAY").is_some()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        true
+    }
+}
+
+fn open_browser(url: &str) -> io::Result<()> {
+    #[cfg(target_os = "windows")]
+    let mut command = {
+        let mut command = Command::new("cmd");
+        command.args(["/C", "start", "", url]);
+        command
+    };
+    #[cfg(target_os = "macos")]
+    let mut command = {
+        let mut command = Command::new("open");
+        command.arg(url);
+        command
+    };
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut command = {
+        let mut command = Command::new("xdg-open");
+        command.arg(url);
+        command
+    };
+    #[cfg(not(any(target_os = "windows", target_os = "macos", unix)))]
+    return Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "opening a browser is unsupported on this platform",
+    ));
+
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map(|_| ())
 }
 
 async fn shutdown_signal() {

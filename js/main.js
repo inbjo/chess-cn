@@ -88,6 +88,7 @@ const piecesGroup = new THREE.Group();
 scene.add(piecesGroup);
 
 const pageParams = new URLSearchParams(location.search);
+const staticOnlyDeployment = document.querySelector('meta[name="chess-deployment"]')?.content === 'cloudflare-static';
 const demoType = pageParams.get('demo');
 const demoSide = pageParams.get('side') === R.BLACK ? R.BLACK : R.RED;
 const deterministicTestMode = pageParams.get('test') === '1';
@@ -239,7 +240,8 @@ function refreshHUD() {
 }
 
 const modeButtons = [...document.querySelectorAll('.mode-option')];
-if (modeButtons.length !== 3) throw new Error('界面资源版本不一致，缺少对弈模式按钮，请强制刷新页面');
+const expectedModeButtonCount = staticOnlyDeployment ? 2 : 3;
+if (modeButtons.length !== expectedModeButtonCount) throw new Error('界面资源版本不一致，缺少对弈模式按钮，请强制刷新页面');
 const aiControls = requiredElement('aiControls');
 const aiEngineSelect = requiredElement('aiEngineSelect');
 const aiDifficultySelect = requiredElement('aiDifficultySelect');
@@ -1278,7 +1280,8 @@ function requestRestart() {
 document.getElementById('btnRestart').addEventListener('click', requestRestart);
 document.getElementById('btnAgain').addEventListener('click', requestRestart);
 async function selectGameMode(nextMode) {
-  if (DEMO_TYPES.has(demoType) || !['ai', 'local', 'online'].includes(nextMode)) return;
+  const supportedModes = staticOnlyDeployment ? ['ai', 'local'] : ['ai', 'local', 'online'];
+  if (DEMO_TYPES.has(demoType) || !supportedModes.includes(nextMode)) return;
   if (nextMode === gameMode) {
     if (nextMode === 'online') showOnlineDialog();
     return;
@@ -1301,7 +1304,8 @@ for (const button of modeButtons) {
   button.addEventListener('click', () => void selectGameMode(button.dataset.mode));
 }
 aiEngineSelect.addEventListener('change', async () => {
-  if (!['godogpaw', 'pikafish'].includes(aiEngineSelect.value)) return;
+  const supportedEngines = staticOnlyDeployment ? ['godogpaw'] : ['godogpaw', 'pikafish'];
+  if (!supportedEngines.includes(aiEngineSelect.value)) return;
   aiRequestVersion++;
   resetWasmAi();
   aiEngine = aiEngineSelect.value;
@@ -1627,7 +1631,7 @@ animate();
 
 if (!DEMO_TYPES.has(demoType)) {
   const invitedRoom = pageParams.get('room')?.trim().toUpperCase();
-  if (invitedRoom && /^[A-Z0-9]{6}$/.test(invitedRoom)) {
+  if (!staticOnlyDeployment && invitedRoom && /^[A-Z0-9]{6}$/.test(invitedRoom)) {
     roomCodeInput.value = invitedRoom;
     let stored = null;
     try { stored = JSON.parse(sessionStorage.getItem(`chess-room-${invitedRoom}`)); }

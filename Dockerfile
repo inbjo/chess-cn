@@ -84,6 +84,7 @@ COPY --from=builder --chown=10001:10001 /out/pikafish ./pikafish
 COPY --from=builder --chown=10001:10001 /out/licenses /usr/share/licenses/chess-cn
 
 ENV CHESS_BIND=0.0.0.0:8000 \
+    CHESS_OPEN_BROWSER=false \
     PIKAFISH_PATH=/opt/chess-cn/pikafish/pikafish \
     PIKAFISH_NNUE=/opt/chess-cn/pikafish/pikafish.nnue \
     HOME=/tmp
