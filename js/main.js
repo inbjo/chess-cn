@@ -2,11 +2,11 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import * as R from './rules.js?v=20260901.3';
-import { createPieceMesh } from './pieces.js?v=20260902.2';
+import { createPieceMesh } from './pieces.js?v=20260902.3';
 import { preloadPieceModels } from './model-assets.js?v=20260901.3';
 import { BOARD_H, BOARD_W, CELL, createBoard, createMarkers, createEnvironment, squareToWorld } from './board3d.js?v=20260902.1';
 import { FX } from './fx.js?v=20260901.3';
-import { probeWasmAi, resetWasmAi, searchWasmAi, uciToMove } from './ai-engine.js?v=20260901.3';
+import { probeWasmAi, resetWasmAi, searchWasmAi, uciToMove } from './ai-engine.js?v=20260902.1';
 import { buildRoomInviteUrl, copyTextToClipboard } from './online-utils.js?v=20260901.4';
 import { findSnappedLegalMove, isPrimaryPointerActivation, pointerTapTolerance } from './interaction-utils.js?v=20260902.1';
 import {
@@ -228,8 +228,10 @@ function applyPiecePresentation(mesh) {
   if (figure) figure.visible = !classic;
   if (pedestal) {
     pedestal.scale.setScalar(classic ? 1.08 : 1);
-    // 经典模式下抵消阵营朝向和换边旋转，让所有汉字始终朝向当前玩家。
-    pedestal.rotation.y = classic ? -mesh.rotation.y + (flipped ? Math.PI : 0) : 0;
+    // 字面模型自带 180° 基础旋转；经典模式需一并抵消，确保换边前后汉字都正向。
+    pedestal.rotation.y = classic
+      ? Math.PI - mesh.rotation.y + (flipped ? Math.PI : 0)
+      : 0;
   }
   if (badge) badge.visible = !classic && !generalCinematic;
 }

@@ -1,8 +1,8 @@
 export const WASM_DIFFICULTY = Object.freeze({
-  easy: Object.freeze({ depth: 2, timeMs: 70 }),
-  medium: Object.freeze({ depth: 6, timeMs: 350 }),
-  hard: Object.freeze({ depth: 10, timeMs: 900 }),
-  master: Object.freeze({ depth: 12, timeMs: 2000 }),
+  easy: Object.freeze({ depth: 1, timeMs: 40 }),
+  medium: Object.freeze({ depth: 4, timeMs: 220 }),
+  hard: Object.freeze({ depth: 8, timeMs: 600 }),
+  master: Object.freeze({ depth: 10, timeMs: 1300 }),
 });
 
 export function uciToMove(uci) {

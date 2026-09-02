@@ -167,7 +167,8 @@ function glyphTexture(text, bg, ink, ring) {
   ctx.stroke();
   ctx.globalAlpha = 1;
   ctx.fillStyle = ink;
-  ctx.font = '900 148px "Ma Shan Zheng", "Noto Serif SC", serif';
+  // 棋子需使用覆盖完整繁简字形的同一字体，避免 Ma Shan Zheng 缺字后局部回退造成混排。
+  ctx.font = '900 148px "Noto Serif SC", "Songti SC", "STSong", serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(text, 128, 136);
@@ -251,7 +252,7 @@ function identityBadgeTexture(text, color) {
   ctx.shadowColor = glow;
   ctx.shadowBlur = 8;
   ctx.fillStyle = ink;
-  ctx.font = '900 126px "Ma Shan Zheng", "STKaiti", "Noto Serif SC", serif';
+  ctx.font = '900 126px "Noto Serif SC", "Songti SC", "STSong", serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(text, 128, 132);

@@ -7,7 +7,12 @@ assert.deepEqual(uciToMove('b2e2'), {
 });
 assert.throws(() => uciToMove('z9a0'), /无效棋步/);
 assert.deepEqual(Object.keys(WASM_DIFFICULTY), ['easy', 'medium', 'hard', 'master']);
-assert.deepEqual(WASM_DIFFICULTY.easy, { depth: 2, timeMs: 70 });
+assert.deepEqual(WASM_DIFFICULTY, {
+  easy: { depth: 1, timeMs: 40 },
+  medium: { depth: 4, timeMs: 220 },
+  hard: { depth: 8, timeMs: 600 },
+  master: { depth: 10, timeMs: 1300 },
+});
 assert.ok(WASM_DIFFICULTY.easy.depth < WASM_DIFFICULTY.medium.depth);
 assert.ok(WASM_DIFFICULTY.medium.depth < WASM_DIFFICULTY.hard.depth);
 assert.ok(WASM_DIFFICULTY.hard.depth < WASM_DIFFICULTY.master.depth);
