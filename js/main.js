@@ -2,12 +2,13 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import * as R from './rules.js?v=20260901.3';
-import { createPieceMesh } from './pieces.js?v=20260901.3';
+import { createPieceMesh } from './pieces.js?v=20260902.1';
 import { preloadPieceModels } from './model-assets.js?v=20260901.3';
-import { createBoard, createMarkers, createEnvironment, squareToWorld } from './board3d.js?v=20260901.3';
+import { CELL, createBoard, createMarkers, createEnvironment, squareToWorld } from './board3d.js?v=20260902.1';
 import { FX } from './fx.js?v=20260901.3';
 import { probeWasmAi, resetWasmAi, searchWasmAi, uciToMove } from './ai-engine.js?v=20260901.3';
 import { buildRoomInviteUrl, copyTextToClipboard } from './online-utils.js?v=20260901.4';
+import { findSnappedLegalMove, isPrimaryPointerActivation, pointerTapTolerance } from './interaction-utils.js?v=20260902.1';
 
 function requiredElement(id) {
   const element = document.getElementById(id);
@@ -43,13 +44,16 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x1a120c);
 scene.fog = new THREE.Fog(0x1a120c, 46, 108);
 
-const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 300);
+// 提高近裁剪面可显著改善深度缓冲精度，避免相机移动时共面表面闪烁。
+const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.5, 300);
 camera.position.set(0, 21, 34);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.set(0, 0.5, -1);
 controls.enableDamping = true;
 controls.dampingFactor = 0.06;
+controls.enableRotate = true;
+controls.enablePan = false;
 controls.minDistance = 14;
 controls.maxDistance = 70;
 controls.maxPolarAngle = 1.35;
@@ -1157,6 +1161,8 @@ function doMove(piece, to) {
 // ---------- 交互 ----------
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
+const boardPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -squareToWorld(0, 0).y);
+const boardPoint = new THREE.Vector3();
 let downPos = null;
 
 function findPieceRoot(obj) {
@@ -1174,6 +1180,10 @@ function castAt(ev) {
   raycaster.setFromCamera(pointer, camera);
   const hitMarker = raycaster.intersectObjects(markers.group.children, false)[0];
   if (hitMarker && hitMarker.object.userData.moveTo) return { marker: hitMarker.object };
+  if (selected && raycaster.ray.intersectPlane(boardPlane, boardPoint)) {
+    const moveTo = findSnappedLegalMove(boardPoint.x, boardPoint.z, selectedMoves, CELL);
+    if (moveTo) return { moveTo };
+  }
   const hitPiece = raycaster.intersectObjects(pieceHitAreas, false)[0];
   if (hitPiece) {
     const root = findPieceRoot(hitPiece.object);
@@ -1182,12 +1192,28 @@ function castAt(ev) {
   return {};
 }
 
-renderer.domElement.addEventListener('pointerdown', ev => { downPos = [ev.clientX, ev.clientY]; });
+renderer.domElement.addEventListener('pointerdown', ev => {
+  if (!isPrimaryPointerActivation(ev)) {
+    downPos = null;
+    return;
+  }
+  downPos = {
+    x: ev.clientX,
+    y: ev.clientY,
+    pointerId: ev.pointerId,
+    pointerType: ev.pointerType,
+  };
+});
 renderer.domElement.addEventListener('pointerup', ev => {
   if (!downPos) return;
-  const dx = ev.clientX - downPos[0], dy = ev.clientY - downPos[1];
+  if (downPos.pointerId !== ev.pointerId || !isPrimaryPointerActivation(ev)) {
+    downPos = null;
+    return;
+  }
+  const dx = ev.clientX - downPos.x, dy = ev.clientY - downPos.y;
+  const tapTolerance = pointerTapTolerance(downPos.pointerType);
   downPos = null;
-  if (dx * dx + dy * dy > 36) return; // 拖拽视角不算点击
+  if (dx * dx + dy * dy > tapTolerance * tapTolerance) return;
   if (gameOver || actionPhase !== 'idle' || tweens.length) return;
   const currentStatus = R.gameStatus(state);
   if (currentStatus.over) {
@@ -1195,10 +1221,15 @@ renderer.domElement.addEventListener('pointerup', ev => {
     return;
   }
 
-  const { marker, pieceRoot } = castAt(ev);
+  const { marker, moveTo, pieceRoot } = castAt(ev);
   if (marker) {
     if (gameMode === 'online') sendOnlineMove(selected, marker.userData.moveTo);
     else doMove(selected, marker.userData.moveTo);
+    return;
+  }
+  if (moveTo) {
+    if (gameMode === 'online') sendOnlineMove(selected, moveTo);
+    else doMove(selected, moveTo);
     return;
   }
   if (pieceRoot) {
@@ -1237,9 +1268,10 @@ renderer.domElement.addEventListener('pointerup', ev => {
     markers.clear();
     if (state.lastMove) markers.lastMoveMarks(state.lastMove.from, state.lastMove.to);
     if (isHumanTurn() && R.isInCheck(state.pieces, state.turn)) showCheckResponses();
-    else hint.textContent = '点击己方棋子查看可走位置';
+    else hint.textContent = '点击己方棋子查看可走位置 · 拖拽旋转视角';
   }
 });
+renderer.domElement.addEventListener('pointercancel', () => { downPos = null; });
 
 let hoverFrame = 0;
 let hoverPoint = null;
@@ -1249,8 +1281,8 @@ renderer.domElement.addEventListener('pointermove', ev => {
   hoverFrame = requestAnimationFrame(() => {
     hoverFrame = 0;
     if (gameOver || !hoverPoint) return;
-    const { marker, pieceRoot } = castAt(hoverPoint);
-    let hover = !!marker;
+    const { marker, moveTo, pieceRoot } = castAt(hoverPoint);
+    let hover = !!marker || !!moveTo;
     if (!hover && pieceRoot) {
       const piece = state.pieces.find(p => p.id === pieceRoot.userData.pieceId);
       hover = piece && ((piece.color === state.turn && isHumanTurn()) ||
@@ -1358,17 +1390,20 @@ document.getElementById('btnUndo').addEventListener('click', () => {
 });
 
 let flipped = false;
+let cameraFlipVersion = 0;
 function setCameraForSide(color) {
   setCameraFlipped(color === R.BLACK);
 }
 
 function setCameraFlipped(nextFlipped = !flipped) {
   if (generalCinematic || actionPhase !== 'idle') return;
+  const version = ++cameraFlipVersion;
   flipped = nextFlipped;
   const t = { t: 0 };
   const from = camera.position.clone();
   const to = new THREE.Vector3(0, 21, flipped ? -34 : 34);
   const step = () => {
+    if (version !== cameraFlipVersion) return;
     t.t += 0.04;
     camera.position.lerpVectors(from, to, Math.min(t.t, 1));
     if (t.t < 1) requestAnimationFrame(step);

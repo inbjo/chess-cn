@@ -190,6 +190,10 @@ function glyphMaterial(color, type) {
       ),
       roughness: 0.55,
       metalness: 0.1,
+      // 汉字面贴近底座顶面，需要稳定的深度偏移以免相机移动时闪动。
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -2,
     }));
   }
   return GLYPH_MATERIAL_CACHE.get(key);
@@ -302,7 +306,7 @@ function pedestal(color, type) {
   );
   face.rotation.x = -Math.PI / 2;
   face.rotation.z = Math.PI;
-  face.position.y = 0.342;
+  face.position.y = 0.35;
   face.receiveShadow = true;
   g.add(face);
   g.add(torus(1.01, 0.035, std(s.baseRing, 0.3, 0.8), 0, 0.34, 0, { x: Math.PI / 2 }));

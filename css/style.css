@@ -208,7 +208,7 @@ body.general-cinematic-active .demo-trigger {
   border-left: 3px solid #9c3927;
   border-radius: 4px 9px 9px 4px;
   box-shadow: 0 12px 34px rgba(0, 0, 0, 0.32), inset 0 0 22px rgba(205, 164, 91, 0.04);
-  backdrop-filter: blur(9px);
+  /* 避免持续变化的 WebGL 画布与实时背景模糊发生跨 GPU 合成闪烁。 */
 }
 .control-row { display: flex; align-items: center; }
 .ai-row { min-height: 38px; padding-top: 6px; border-top: 1px solid rgba(205, 164, 91, 0.18); }
@@ -435,10 +435,9 @@ body.general-cinematic-active .demo-trigger {
   transform: translateY(-50%);
   width: 132px;
   padding: 18px 14px;
-  background: linear-gradient(155deg, rgba(35, 23, 14, 0.84), rgba(10, 10, 12, 0.82));
+  background: linear-gradient(155deg, rgba(35, 23, 14, 0.94), rgba(10, 10, 12, 0.93));
   border: 1px solid rgba(201, 162, 90, 0.35);
   border-radius: 10px;
-  backdrop-filter: blur(8px);
   z-index: 10;
 }
 .cap-block h3 {
@@ -615,11 +614,10 @@ body.general-cinematic-active .demo-trigger {
   font-size: 13px;
   letter-spacing: 2px;
   color: rgba(238, 224, 191, 0.68);
-  background: rgba(20, 13, 8, 0.72);
+  background: rgba(20, 13, 8, 0.9);
   border: 1px solid rgba(201, 162, 90, 0.2);
   border-radius: 999px;
   padding: 8px 22px;
-  backdrop-filter: blur(6px);
   z-index: 10;
   pointer-events: none;
 }

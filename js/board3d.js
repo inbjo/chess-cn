@@ -159,12 +159,18 @@ export function createBoard() {
   group.add(body);
 
   // 顶面棋路
-  const top = new THREE.Mesh(
-    new THREE.PlaneGeometry(BOARD_W, BOARD_H),
-    new THREE.MeshStandardMaterial({ map: boardTexture(), roughness: 0.88, metalness: 0.04 })
-  );
+  const topMaterial = new THREE.MeshStandardMaterial({
+    map: boardTexture(),
+    roughness: 0.88,
+    metalness: 0.04,
+    // 顶面与盘体几乎共面；向镜头侧偏移深度，防止缩放/旋转时 z-fighting。
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -4,
+  });
+  const top = new THREE.Mesh(new THREE.PlaneGeometry(BOARD_W, BOARD_H), topMaterial);
   top.rotation.x = -Math.PI / 2;
-  top.position.y = TOP_Y + 0.001;
+  top.position.y = TOP_Y + 0.006;
   top.receiveShadow = true;
   group.add(top);
 
