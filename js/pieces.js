@@ -709,7 +709,8 @@ const BUILDERS = {
 export function createPieceMesh(type, color) {
   const s = SIDE[color];
   const root = new THREE.Group();
-  root.add(pedestal(color, type));
+  const piecePedestal = pedestal(color, type);
+  root.add(piecePedestal);
   const generatedFigure = createGeneratedFigure(type, color);
   const figure = generatedFigure || BUILDERS[type](s);
   const rig = figure.userData.rig || {};
@@ -729,6 +730,7 @@ export function createPieceMesh(type, color) {
   hitArea.userData.isPieceHitArea = true;
   root.add(hitArea);
   root.userData.figure = figure;
+  root.userData.pedestal = piecePedestal;
   root.userData.rig = rig;
   root.userData.hitArea = hitArea;
   root.userData.identityBadge = badge;

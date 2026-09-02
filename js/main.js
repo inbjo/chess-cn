@@ -2,13 +2,30 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import * as R from './rules.js?v=20260901.3';
-import { createPieceMesh } from './pieces.js?v=20260902.1';
+import { createPieceMesh } from './pieces.js?v=20260902.2';
 import { preloadPieceModels } from './model-assets.js?v=20260901.3';
-import { CELL, createBoard, createMarkers, createEnvironment, squareToWorld } from './board3d.js?v=20260902.1';
+import { BOARD_H, BOARD_W, CELL, createBoard, createMarkers, createEnvironment, squareToWorld } from './board3d.js?v=20260902.1';
 import { FX } from './fx.js?v=20260901.3';
 import { probeWasmAi, resetWasmAi, searchWasmAi, uciToMove } from './ai-engine.js?v=20260901.3';
 import { buildRoomInviteUrl, copyTextToClipboard } from './online-utils.js?v=20260901.4';
 import { findSnappedLegalMove, isPrimaryPointerActivation, pointerTapTolerance } from './interaction-utils.js?v=20260902.1';
+import {
+  DISPLAY_MODES,
+  MOTION_MODES,
+  classicCameraFrustum,
+  loadVisualPreferences,
+  saveVisualPreferences,
+} from './visual-preferences.js?v=20260902.1';
+
+const reducedMotionMedia = window.matchMedia('(prefers-reduced-motion: reduce)');
+let visualPreferenceStorage = null;
+try { visualPreferenceStorage = window.localStorage; }
+catch (_) { /* 禁止持久化时仍允许本次会话正常切换 */ }
+const initialVisualPreferences = loadVisualPreferences(visualPreferenceStorage, reducedMotionMedia.matches);
+let displayMode = initialVisualPreferences.displayMode;
+let motionMode = initialVisualPreferences.motionMode;
+let hasSavedMotionMode = initialVisualPreferences.hasSavedMotionMode;
+document.documentElement.dataset.motion = motionMode;
 
 function requiredElement(id) {
   const element = document.getElementById(id);
@@ -41,22 +58,45 @@ canvas.addEventListener('webglcontextlost', event => {
 });
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x1a120c);
-scene.fog = new THREE.Fog(0x1a120c, 46, 108);
+const battleBackground = new THREE.Color(0x1a120c);
+const classicBackground = new THREE.Color(0x120d09);
+const battleFog = new THREE.Fog(0x1a120c, 46, 108);
+scene.background = displayMode === 'classic' ? classicBackground : battleBackground;
+scene.fog = displayMode === 'classic' ? null : battleFog;
 
 // 提高近裁剪面可显著改善深度缓冲精度，避免相机移动时共面表面闪烁。
-const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.5, 300);
-camera.position.set(0, 21, 34);
+const perspectiveCamera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.5, 300);
+perspectiveCamera.position.set(0, 21, 34);
+const classicCamera = new THREE.OrthographicCamera(-14, 14, 16, -16, 0.5, 100);
+classicCamera.position.set(0, 42, 0);
+classicCamera.up.set(0, 0, -1);
+classicCamera.lookAt(0, 0.5, 0);
+let camera = displayMode === 'classic' ? classicCamera : perspectiveCamera;
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.set(0, 0.5, -1);
 controls.enableDamping = true;
 controls.dampingFactor = 0.06;
-controls.enableRotate = true;
+controls.enableRotate = displayMode === 'battle';
 controls.enablePan = false;
 controls.minDistance = 14;
 controls.maxDistance = 70;
+controls.minZoom = 0.72;
+controls.maxZoom = 2.2;
 controls.maxPolarAngle = 1.35;
+
+function resizeClassicCamera() {
+  const frustum = classicCameraFrustum(
+    window.innerWidth,
+    window.innerHeight,
+    BOARD_W,
+    BOARD_H,
+    window.innerWidth < 760 ? 1.18 : 1.12,
+  );
+  Object.assign(classicCamera, frustum);
+  classicCamera.updateProjectionMatrix();
+}
+resizeClassicCamera();
 
 // ---------- 灯光 ----------
 scene.add(new THREE.HemisphereLight(0xc7d5ef, 0x5a351d, 1.25));
@@ -173,6 +213,63 @@ const tweens = [];
 const generalCinematicEl = document.getElementById('generalCinematic');
 const cinematicGlyph = document.getElementById('cinematicGlyph');
 let generalCinematic = null;
+let flipped = false;
+let cameraFlipVersion = 0;
+
+function effectiveMotionMode() {
+  return displayMode === 'classic' && motionMode === 'full' ? 'simple' : motionMode;
+}
+
+function applyPiecePresentation(mesh) {
+  const classic = displayMode === 'classic';
+  const figure = mesh.userData.figure;
+  const pedestal = mesh.userData.pedestal;
+  const badge = mesh.userData.identityBadge;
+  if (figure) figure.visible = !classic;
+  if (pedestal) {
+    pedestal.scale.setScalar(classic ? 1.08 : 1);
+    // 经典模式下抵消阵营朝向和换边旋转，让所有汉字始终朝向当前玩家。
+    pedestal.rotation.y = classic ? -mesh.rotation.y + (flipped ? Math.PI : 0) : 0;
+  }
+  if (badge) badge.visible = !classic && !generalCinematic;
+}
+
+function refreshAllPiecePresentation() {
+  for (const mesh of meshById.values()) applyPiecePresentation(mesh);
+}
+
+function resetAmbientVisuals() {
+  for (const mesh of meshById.values()) {
+    const figure = mesh.userData.figure;
+    const badge = mesh.userData.identityBadge;
+    if (figure) {
+      figure.rotation.z = 0;
+      figure.position.y = 0.34;
+    }
+    if (badge) {
+      badge.scale.set(badge.userData.baseScale, badge.userData.baseScale, 1);
+      badge.material.opacity = 0.92;
+    }
+    if (!tweens.some(tween => tween.mesh === mesh)) mesh.position.y = squareToWorld(0, 0).y;
+  }
+  for (const banner of env.banners) {
+    banner.cloth.geometry.attributes.position.array.set(banner.base);
+    banner.cloth.geometry.attributes.position.needsUpdate = true;
+  }
+  for (const fire of env.fires) {
+    fire.light.intensity = 9;
+    fire.flame.scale.y = 1;
+  }
+}
+
+function orientClassicCamera() {
+  const portraitOffset = window.innerWidth < 760 && window.innerHeight > window.innerWidth ? 5.2 : 0;
+  const targetZ = flipped ? portraitOffset : -portraitOffset;
+  classicCamera.position.set(0, 42, targetZ);
+  classicCamera.up.set(0, 0, flipped ? 1 : -1);
+  classicCamera.lookAt(0, 0.5, targetZ);
+  classicCamera.updateMatrixWorld();
+}
 
 function buildAllPieces() {
   for (const p of state.pieces) {
@@ -186,6 +283,7 @@ function buildAllPieces() {
     piecesGroup.add(mesh);
     meshById.set(p.id, mesh);
     pieceHitAreas.push(mesh.userData.hitArea);
+    applyPiecePresentation(mesh);
   }
   renderer.shadowMap.needsUpdate = true;
 }
@@ -228,6 +326,12 @@ const turnBadge = document.getElementById('turnBadge');
 const checkBanner = document.getElementById('checkBanner');
 const hint = document.getElementById('hint');
 
+function boardInteractionHint() {
+  return displayMode === 'classic'
+    ? '点击己方棋子查看可走位置 · 经典大字视图'
+    : '点击己方棋子查看可走位置 · 拖拽旋转视角';
+}
+
 function refreshHUD() {
   const red = state.turn === R.RED;
   turnBadge.textContent = red ? '红方行棋' : '黑方行棋';
@@ -250,7 +354,88 @@ const aiControls = requiredElement('aiControls');
 const aiEngineSelect = requiredElement('aiEngineSelect');
 const aiDifficultySelect = requiredElement('aiDifficultySelect');
 const aiStatus = requiredElement('aiStatus');
+const displayButtons = [...document.querySelectorAll('.visual-option')];
+if (displayButtons.length !== 2) throw new Error('界面资源版本不一致，缺少棋盘画面按钮，请强制刷新页面');
+const motionModeSelect = requiredElement('motionModeSelect');
 const difficultyNames = { easy: '入门', medium: '中等', hard: '困难', master: '大师' };
+const motionModeNames = { full: '完整', simple: '简化', off: '关闭' };
+
+function refreshVisualControls() {
+  for (const button of displayButtons) {
+    const active = button.dataset.display === displayMode;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  }
+  const classic = displayMode === 'classic';
+  const fullMotionOption = motionModeSelect.querySelector('option[value="full"]');
+  if (fullMotionOption) fullMotionOption.disabled = classic;
+  motionModeSelect.value = effectiveMotionMode();
+  motionModeSelect.title = classic ? '经典大字模式最多使用简化动效' : '调整棋盘动效';
+  document.documentElement.dataset.motion = effectiveMotionMode();
+  document.body.classList.toggle('classic-view', displayMode === 'classic');
+}
+
+function saveCurrentVisualPreferences() {
+  saveVisualPreferences(visualPreferenceStorage, displayMode, motionMode);
+}
+
+function applyDisplayMode(nextMode, announce = true, persist = true) {
+  if (!DISPLAY_MODES.includes(nextMode)) return false;
+  if (announce && (actionPhase !== 'idle' || tweens.length || generalCinematic)) {
+    battleHint('请等待当前棋步结束后再切换画面', true);
+    refreshVisualControls();
+    return false;
+  }
+  cameraFlipVersion++;
+  displayMode = nextMode;
+  const classic = displayMode === 'classic';
+  camera = classic ? classicCamera : perspectiveCamera;
+  controls.object = camera;
+  controls.enableRotate = !classic;
+  controls.enablePan = false;
+  if (classic) {
+    resizeClassicCamera();
+    orientClassicCamera();
+    controls.target.set(0, 0.5, classicCamera.position.z);
+  } else {
+    controls.target.set(0, 0.5, -1);
+    perspectiveCamera.up.set(0, 1, 0);
+    perspectiveCamera.position.set(0, 21, flipped ? -34 : 34);
+  }
+  controls.update();
+  env.group.visible = !classic;
+  scene.background = classic ? classicBackground : battleBackground;
+  scene.fog = classic ? null : battleFog;
+  refreshAllPiecePresentation();
+  resetAmbientVisuals();
+  refreshVisualControls();
+  hint.textContent = boardInteractionHint();
+  renderer.domElement.style.cursor = classic ? 'default' : 'grab';
+  renderer.shadowMap.needsUpdate = true;
+  renderer.render(scene, camera);
+  if (persist) saveCurrentVisualPreferences();
+  if (announce) battleHint(classic ? '已切换经典大字棋盘 · 点击换边调整方向' : '已切换 3D 战场 · 拖拽旋转视角');
+  return true;
+}
+
+function applyMotionMode(nextMode, announce = true, persist = true) {
+  if (!MOTION_MODES.includes(nextMode)) return false;
+  if (announce && (actionPhase !== 'idle' || tweens.length || generalCinematic)) {
+    battleHint('请等待当前棋步结束后再调整动效', true);
+    refreshVisualControls();
+    return false;
+  }
+  motionMode = nextMode;
+  if (persist) hasSavedMotionMode = true;
+  if (motionMode !== 'full') {
+    fx.clear();
+    resetAmbientVisuals();
+  }
+  refreshVisualControls();
+  if (persist) saveCurrentVisualPreferences();
+  if (announce) battleHint(`动效已调整为：${motionModeNames[motionMode]}`);
+  return true;
+}
 
 function aiEngineName(engine = aiEngine) {
   return engine === 'pikafish' ? 'Pikafish' : 'godogpaw WASM';
@@ -301,7 +486,7 @@ function battleHint(message, error = false) {
         ? '你执红先行 · 黑方由电脑应战'
         : gameMode === 'online'
           ? onlineHintText()
-          : '点击己方棋子查看可走位置 · 拖拽旋转视角';
+          : boardInteractionHint();
     hint.classList.remove('error');
   }, 3200);
 }
@@ -762,6 +947,11 @@ function makeFadable(mesh) {
   mesh.userData.ownedMaterials = ownedMaterials;
   mesh.userData.hasFadableMaterials = true;
 }
+function detachCapturedPiece(mesh) {
+  piecesGroup.remove(mesh);
+  const hitIndex = pieceHitAreas.indexOf(mesh.userData.hitArea);
+  if (hitIndex >= 0) pieceHitAreas.splice(hitIndex, 1);
+}
 // 被吃棋子击飞: 抛起 + 翻滚 + 淡出
 function flingPiece(mesh, dir, style, onDone = null) {
   makeFadable(mesh);
@@ -783,9 +973,7 @@ function flingPiece(mesh, dir, style, onDone = null) {
     mesh, from: mesh.position.clone(), to, t: 0, dur: profile.dur, arc: up,
     fade: true, spin: profile.spin,
     onDone: () => {
-      piecesGroup.remove(mesh);
-      const hitIndex = pieceHitAreas.indexOf(mesh.userData.hitArea);
-      if (hitIndex >= 0) pieceHitAreas.splice(hitIndex, 1);
+      detachCapturedPiece(mesh);
       onDone?.();
     },
   });
@@ -986,6 +1174,7 @@ function doMove(piece, to) {
     if (finished) return;
     finished = true;
     restoreFacing(mesh);
+    applyPiecePresentation(mesh);
     actionPhase = 'idle';
     const status = R.gameStatus(state);
     refreshHUD();
@@ -1002,16 +1191,22 @@ function doMove(piece, to) {
     if (!status.over) maybeRequestAiMove();
   };
 
-  // 普通移动: 跳跃落位
+  const activeMotion = effectiveMotionMode();
+
+  // 普通移动：完整模式保留兵种弧线，简化模式仅短距离滑动，关闭模式立即落位。
   if (!captured) {
     actionPhase = 'moving';
     sndMove();
-    animateMove(mesh, dstV, arcFor(piece.type), finish);
+    if (activeMotion === 'off') {
+      mesh.position.copy(dstV);
+      finish();
+    } else {
+      animateMove(mesh, dstV, activeMotion === 'full' ? arcFor(piece.type) : 0, finish,
+        activeMotion === 'full' ? 0.5 : 0.18);
+    }
     return;
   }
 
-  // 吃子: 按兵种演出攻击动画，再落位
-  setAttackPhase(piece.type, 'windup');
   const capMesh = meshById.get(captured.id);
   if (!capMesh) {
     console.error(`Missing visual mesh for captured piece ${captured.id}`);
@@ -1019,6 +1214,21 @@ function doMove(piece, to) {
     finish();
     return;
   }
+  if (activeMotion !== 'full') {
+    actionPhase = 'moving';
+    sndCapture();
+    detachCapturedPiece(capMesh);
+    if (activeMotion === 'off') {
+      mesh.position.copy(dstV);
+      finish();
+    } else {
+      animateMove(mesh, dstV, 0, finish, 0.2);
+    }
+    return;
+  }
+
+  // 完整模式吃子：按兵种演出攻击动画，再落位。
+  setAttackPhase(piece.type, 'windup');
   const capPos = capMesh.position.clone();
   const dir = dstV.clone().sub(mesh.position).setY(0).normalize();
   const effectColor = ATTACK_COLOR[piece.color][piece.type];
@@ -1268,7 +1478,7 @@ renderer.domElement.addEventListener('pointerup', ev => {
     markers.clear();
     if (state.lastMove) markers.lastMoveMarks(state.lastMove.from, state.lastMove.to);
     if (isHumanTurn() && R.isInCheck(state.pieces, state.turn)) showCheckResponses();
-    else hint.textContent = '点击己方棋子查看可走位置 · 拖拽旋转视角';
+    else hint.textContent = boardInteractionHint();
   }
 });
 renderer.domElement.addEventListener('pointercancel', () => { downPos = null; });
@@ -1288,12 +1498,12 @@ renderer.domElement.addEventListener('pointermove', ev => {
       hover = piece && ((piece.color === state.turn && isHumanTurn()) ||
         (selected && selectedMoves.some(m => m.row === piece.row && m.col === piece.col)));
     }
-    renderer.domElement.style.cursor = hover ? 'pointer' : 'grab';
+    renderer.domElement.style.cursor = hover ? 'pointer' : displayMode === 'classic' ? 'default' : 'grab';
   });
 });
 renderer.domElement.addEventListener('pointerleave', () => {
   hoverPoint = null;
-  renderer.domElement.style.cursor = 'grab';
+  renderer.domElement.style.cursor = displayMode === 'classic' ? 'default' : 'grab';
 });
 
 // ---------- 按钮 ----------
@@ -1335,6 +1545,13 @@ async function selectGameMode(nextMode) {
 for (const button of modeButtons) {
   button.addEventListener('click', () => void selectGameMode(button.dataset.mode));
 }
+for (const button of displayButtons) {
+  button.addEventListener('click', () => applyDisplayMode(button.dataset.display));
+}
+motionModeSelect.addEventListener('change', () => applyMotionMode(motionModeSelect.value));
+reducedMotionMedia.addEventListener?.('change', event => {
+  if (!hasSavedMotionMode) applyMotionMode(event.matches ? 'simple' : 'full', false, false);
+});
 aiEngineSelect.addEventListener('change', async () => {
   const supportedEngines = staticOnlyDeployment ? ['godogpaw'] : ['godogpaw', 'pikafish'];
   if (!supportedEngines.includes(aiEngineSelect.value)) return;
@@ -1369,12 +1586,14 @@ document.getElementById('btnUndo').addEventListener('click', () => {
     undone = true;
     const mesh = meshById.get(h.pieceId);
     restoreFacing(mesh);
+    applyPiecePresentation(mesh);
     const back = squareToWorld(h.from.row, h.from.col);
     mesh.position.set(back.x, back.y, back.z);
     if (h.captured) {
       const cm = meshById.get(h.captured.id);
       setOpacity(cm, 1);
       cm.rotation.set(0, h.captured.color === R.RED ? Math.PI : 0, 0); // 复位击飞翻滚
+      applyPiecePresentation(cm);
       const cp = squareToWorld(h.captured.row, h.captured.col);
       cm.position.set(cp.x, cp.y, cp.z);
       piecesGroup.add(cm);
@@ -1389,8 +1608,6 @@ document.getElementById('btnUndo').addEventListener('click', () => {
   refreshHUD();
 });
 
-let flipped = false;
-let cameraFlipVersion = 0;
 function setCameraForSide(color) {
   setCameraFlipped(color === R.BLACK);
 }
@@ -1399,13 +1616,27 @@ function setCameraFlipped(nextFlipped = !flipped) {
   if (generalCinematic || actionPhase !== 'idle') return;
   const version = ++cameraFlipVersion;
   flipped = nextFlipped;
+  if (displayMode === 'classic') {
+    orientClassicCamera();
+    controls.target.set(0, 0.5, classicCamera.position.z);
+    refreshAllPiecePresentation();
+    controls.update();
+    renderer.render(scene, camera);
+    return;
+  }
   const t = { t: 0 };
-  const from = camera.position.clone();
+  const from = perspectiveCamera.position.clone();
   const to = new THREE.Vector3(0, 21, flipped ? -34 : 34);
+  if (motionMode === 'off') {
+    perspectiveCamera.position.copy(to);
+    controls.update();
+    renderer.render(scene, camera);
+    return;
+  }
   const step = () => {
     if (version !== cameraFlipVersion) return;
-    t.t += 0.04;
-    camera.position.lerpVectors(from, to, Math.min(t.t, 1));
+    t.t += motionMode === 'simple' ? 0.1 : 0.04;
+    perspectiveCamera.position.lerpVectors(from, to, Math.min(t.t, 1));
     if (t.t < 1) requestAnimationFrame(step);
   };
   step();
@@ -1454,6 +1685,7 @@ function updateScene(dt, renderFrame = true) {
   dt = Math.min(Math.max(dt, 0), 0.05);
   simulationTime += dt;
   const time = simulationTime;
+  const ambientMotion = motionMode === 'full' && displayMode === 'battle';
 
   const shadowsWereAnimating = tweens.length > 0;
 
@@ -1481,62 +1713,70 @@ function updateScene(dt, renderFrame = true) {
     }
   }
 
-  // 战斗特效
-  fx.update(dt);
+  // 战斗特效仅在完整动效中运行。
+  if (effectiveMotionMode() === 'full') fx.update(dt);
 
   // 待机呼吸 + 选中浮动
   for (const mesh of piecesGroup.children) {
     const badge = mesh.userData.identityBadge;
-    if (badge) badge.visible = !generalCinematic;
+    if (badge) badge.visible = displayMode === 'battle' && !generalCinematic;
     if (tweens.some(tw => tw.mesh === mesh)) continue;
     const fig = mesh.userData.figure;
     if (fig) {
-      fig.rotation.z = Math.sin(time * 1.3 + mesh.userData.phase) * 0.018;
-      fig.position.y = 0.34 + Math.sin(time * 1.3 + mesh.userData.phase) * 0.015;
+      fig.rotation.z = ambientMotion ? Math.sin(time * 1.3 + mesh.userData.phase) * 0.018 : 0;
+      fig.position.y = ambientMotion ? 0.34 + Math.sin(time * 1.3 + mesh.userData.phase) * 0.015 : 0.34;
     }
     const isSel = selected && mesh.userData.pieceId === selected.id;
     if (badge) {
-      const pulse = isSel ? 1.14 + Math.sin(time * 4) * 0.035 : 1;
+      const pulse = isSel ? 1.14 + (ambientMotion ? Math.sin(time * 4) * 0.035 : 0) : 1;
       const targetScale = badge.userData.baseScale * pulse;
-      badge.scale.x += (targetScale - badge.scale.x) * Math.min(dt * 10, 1);
-      badge.scale.y += (targetScale - badge.scale.y) * Math.min(dt * 10, 1);
-      badge.material.opacity += ((isSel ? 1 : 0.92) - badge.material.opacity) * Math.min(dt * 9, 1);
+      const targetOpacity = isSel ? 1 : 0.92;
+      if (motionMode === 'off') {
+        badge.scale.set(targetScale, targetScale, 1);
+        badge.material.opacity = targetOpacity;
+      } else {
+        badge.scale.x += (targetScale - badge.scale.x) * Math.min(dt * 10, 1);
+        badge.scale.y += (targetScale - badge.scale.y) * Math.min(dt * 10, 1);
+        badge.material.opacity += (targetOpacity - badge.material.opacity) * Math.min(dt * 9, 1);
+      }
     }
     const baseY = squareToWorld(0, 0).y;
-    if (isSel) {
+    if (isSel && ambientMotion) {
       mesh.position.y = baseY + 0.18 + Math.sin(time * 4) * 0.05;
     } else if (Math.abs(mesh.position.y - baseY) > 0.001) {
       mesh.position.y += (baseY - mesh.position.y) * Math.min(dt * 8, 1);
     }
   }
 
-  // 战旗挥舞
-  for (const b of env.banners) {
-    const attr = b.cloth.geometry.attributes.position;
-    const base = b.base;
-    for (let i = 0; i < attr.count; i++) {
-      const x = base[i * 3];
-      const f = Math.max(0, (x - 0.1) / b.width);
-      attr.setZ(i, Math.sin(x * 2.2 + time * 3.4 + b.phase) * 0.34 * f + Math.sin(time * 7.3 + x * 5) * 0.07 * f);
+  if (ambientMotion) {
+    // 战旗挥舞
+    for (const b of env.banners) {
+      const attr = b.cloth.geometry.attributes.position;
+      const base = b.base;
+      for (let i = 0; i < attr.count; i++) {
+        const x = base[i * 3];
+        const f = Math.max(0, (x - 0.1) / b.width);
+        attr.setZ(i, Math.sin(x * 2.2 + time * 3.4 + b.phase) * 0.34 * f + Math.sin(time * 7.3 + x * 5) * 0.07 * f);
+      }
+      attr.needsUpdate = true;
     }
-    attr.needsUpdate = true;
-  }
 
-  // 火盆摇曳
-  for (const f of env.fires) {
-    f.light.intensity = 9 + Math.sin(time * 11 + f.phase) * 2.4 + Math.sin(time * 23.7 + f.phase * 2) * 1.4;
-    f.flame.scale.y = 1 + Math.sin(time * 9 + f.phase) * 0.18;
-    f.flame.rotation.y = time * 2 + f.phase;
-  }
+    // 火盆摇曳
+    for (const f of env.fires) {
+      f.light.intensity = 9 + Math.sin(time * 11 + f.phase) * 2.4 + Math.sin(time * 23.7 + f.phase * 2) * 1.4;
+      f.flame.scale.y = 1 + Math.sin(time * 9 + f.phase) * 0.18;
+      f.flame.rotation.y = time * 2 + f.phase;
+    }
 
-  // 余烬缓升
-  const pos = env.embers.geometry.attributes.position;
-  for (let i = 0; i < pos.count; i++) {
-    let y = pos.getY(i) + dt * 0.5;
-    if (y > 15) y = -1;
-    pos.setY(i, y);
+    // 余烬缓升
+    const pos = env.embers.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      let y = pos.getY(i) + dt * 0.5;
+      if (y > 15) y = -1;
+      pos.setY(i, y);
+    }
+    pos.needsUpdate = true;
   }
-  pos.needsUpdate = true;
 
   controls.update();
   updateGeneralCinematic(dt);
@@ -1582,8 +1822,13 @@ function animate(now = performance.now()) {
 }
 
 window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
+  perspectiveCamera.aspect = window.innerWidth / window.innerHeight;
+  perspectiveCamera.updateProjectionMatrix();
+  resizeClassicCamera();
+  if (displayMode === 'classic') {
+    orientClassicCamera();
+    controls.target.set(0, 0.5, classicCamera.position.z);
+  }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, window.innerWidth < 760 ? 1.35 : 1.75));
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
@@ -1602,6 +1847,11 @@ window.render_game_to_text = () => JSON.stringify({
   lastAttackType,
   gameOver,
   gameMode,
+  displayMode,
+  motionMode,
+  effectiveMotionMode: effectiveMotionMode(),
+  cameraType: camera.isOrthographicCamera ? 'orthographic' : 'perspective',
+  environmentVisible: env.group.visible,
   aiEngine,
   aiDifficulty,
   aiThinking,
@@ -1655,11 +1905,23 @@ window.install_test_state = nextState => {
   return true;
 };
 
+window.set_visual_preferences_for_test = preferences => {
+  if (!deterministicTestMode) return false;
+  if (preferences?.displayMode && !applyDisplayMode(preferences.displayMode, false, false)) return false;
+  if (preferences?.motionMode && !applyMotionMode(preferences.motionMode, false, false)) return false;
+  updateScene(0);
+  return true;
+};
+
 const bootText = document.getElementById('bootText');
 window.__tripoModelCount = await preloadPieceModels((completed, total) => {
   if (bootText) bootText.textContent = `正在点将 · 重塑战阵 ${completed}/${total}`;
 });
+if (deterministicTestMode && DISPLAY_MODES.includes(pageParams.get('display'))) displayMode = pageParams.get('display');
+if (deterministicTestMode && MOTION_MODES.includes(pageParams.get('motion'))) motionMode = pageParams.get('motion');
 buildAllPieces();
+applyDisplayMode(displayMode, false, false);
+applyMotionMode(motionMode, false, false);
 refreshHUD();
 refreshBattleControls();
 animate();

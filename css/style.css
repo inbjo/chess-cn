@@ -211,7 +211,8 @@ body.general-cinematic-active .demo-trigger {
   /* 避免持续变化的 WebGL 画布与实时背景模糊发生跨 GPU 合成闪烁。 */
 }
 .control-row { display: flex; align-items: center; }
-.ai-row { min-height: 38px; padding-top: 6px; border-top: 1px solid rgba(205, 164, 91, 0.18); }
+.visual-row, .ai-row { min-height: 38px; padding-top: 6px; border-top: 1px solid rgba(205, 164, 91, 0.18); }
+.visual-row { align-items: flex-end; gap: 8px; }
 .battle-controls button {
   display: flex;
   align-items: center;
@@ -237,9 +238,9 @@ body.general-cinematic-active .demo-trigger {
   letter-spacing: 2px;
 }
 .battle-controls b { display: block; font-size: 13px; line-height: 1; letter-spacing: 2px; }
-.mode-picker { display: grid; align-content: center; gap: 4px; }
-.mode-picker > small { margin: 0 0 0 3px; }
-.mode-options { display: flex; gap: 3px; }
+.mode-picker, .visual-picker { display: grid; align-content: center; gap: 4px; }
+.mode-picker > small, .visual-picker > small { margin: 0 0 0 3px; }
+.mode-options, .visual-options { display: flex; gap: 3px; }
 .battle-controls .mode-option {
   min-height: 29px;
   padding: 6px 10px;
@@ -249,12 +250,34 @@ body.general-cinematic-active .demo-trigger {
   letter-spacing: 1px;
   border: 1px solid transparent;
 }
-.battle-controls .mode-option.active {
+.battle-controls .visual-option {
+  min-height: 29px;
+  padding: 6px 9px;
+  color: rgba(238, 224, 191, 0.6);
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: 1px;
+  border: 1px solid transparent;
+}
+.battle-controls .mode-option.active,
+.battle-controls .visual-option.active {
   color: #ffe0a0;
   background: linear-gradient(145deg, rgba(153, 48, 31, 0.72), rgba(96, 29, 22, 0.62));
   border-color: rgba(240, 190, 97, 0.68);
   box-shadow: inset 0 0 13px rgba(255, 180, 76, 0.1), 0 0 10px rgba(157, 48, 27, 0.2);
 }
+.motion-choice { display: grid; align-content: center; gap: 4px; padding-right: 4px; }
+.motion-choice small { margin: 0; }
+.motion-choice select {
+  min-width: 58px;
+  padding: 5px 6px;
+  color: #f3d99f;
+  font: 600 11px/1 "Noto Serif SC", "Songti SC", serif;
+  background: #21160f;
+  border: 1px solid rgba(205, 164, 91, 0.34);
+  border-radius: 4px;
+}
+.motion-choice select:focus-visible { border-color: rgba(240, 190, 97, 0.78); box-shadow: 0 0 0 2px rgba(240, 190, 97, 0.12); outline: none; }
 .ai-controls {
   display: flex;
   align-items: stretch;
@@ -289,6 +312,14 @@ body.general-cinematic-active .demo-trigger {
 .ai-status.thinking { background: #f0c978; animation: aiPulse 0.8s ease-in-out infinite alternate; }
 .ai-status.error { background: #e1634c; box-shadow: 0 0 11px rgba(225, 99, 76, 0.65); }
 @keyframes aiPulse { to { opacity: 0.35; transform: scale(0.72); } }
+
+html[data-motion="simple"] .chip,
+html[data-motion="simple"] #checkBanner.show,
+html[data-motion="off"] .chip,
+html[data-motion="off"] #checkBanner.show,
+html[data-motion="off"] .ai-status { animation: none; }
+
+body.classic-view #scene { cursor: default; }
 
 /* ---------- 联机军帐 ---------- */
 .online-dialog {
@@ -687,6 +718,10 @@ body.general-cinematic-active .demo-trigger {
   .battle-controls small { display: none; }
   .battle-controls b { font-size: 11px; letter-spacing: 1px; }
   .battle-controls .mode-option { min-height: 29px; padding: 5px 7px; font-size: 11px; }
+  .battle-controls .visual-option { min-height: 29px; padding: 5px 6px; font-size: 10px; }
+  .visual-row { gap: 4px; }
+  .motion-choice { padding-right: 0; }
+  .motion-choice select { min-width: 52px; padding: 5px 3px; font-size: 10px; }
   .ai-choice { padding: 0 4px; }
   .ai-choice select { min-width: 64px; max-width: 78px; padding: 5px 4px; font-size: 10px; }
   #panel { display: none; }
@@ -694,4 +729,13 @@ body.general-cinematic-active .demo-trigger {
   #resultText { font-size: 64px; }
   .cinematic-title { left: 24px; bottom: 72px; gap: 12px; }
   .cinematic-title small { letter-spacing: 0.2em; }
+}
+
+@media (max-width: 520px) {
+  .brand { display: none; }
+  .hud-top { justify-content: space-between; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boot-line b, .chip, #checkBanner.show, .ai-status { animation: none; }
 }

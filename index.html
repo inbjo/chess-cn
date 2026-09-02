@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;600;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css?v=20260902.2" />
+  <link rel="stylesheet" href="css/style.css?v=20260902.3" />
   <script type="importmap">
     {
       "imports": {
@@ -77,6 +77,23 @@
           <button id="btnModeOnline" class="mode-option" type="button" data-mode="online" aria-pressed="false">联机</button>
         </div>
       </div>
+    </div>
+    <div class="control-row visual-row">
+      <div class="visual-picker">
+        <small>棋盘画面</small>
+        <div class="visual-options" role="group" aria-label="选择棋盘画面">
+          <button id="btnViewBattle" class="visual-option active" type="button" data-display="battle" aria-pressed="true">3D 战场</button>
+          <button id="btnViewClassic" class="visual-option" type="button" data-display="classic" aria-pressed="false">经典大字</button>
+        </div>
+      </div>
+      <label class="motion-choice" for="motionModeSelect">
+        <small>动效</small>
+        <select id="motionModeSelect" name="motion" aria-label="棋盘动效">
+          <option value="full">完整</option>
+          <option value="simple">简化</option>
+          <option value="off">关闭</option>
+        </select>
+      </label>
     </div>
     <div class="control-row ai-row">
       <div id="aiControls" class="ai-controls">
@@ -160,7 +177,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/main.js?v=20260902.2"></script>
+  <script type="module" src="js/main.js?v=20260902.3"></script>
   <noscript><p class="noscript">请启用 JavaScript 后进入战场。</p></noscript>
 </body>
 </html>
