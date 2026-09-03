@@ -292,7 +292,10 @@ async fn online_socket(
         return Err(ApiError::bad_request("无效的房间凭证"));
     }
     Ok(websocket.on_upgrade(move |socket| async move {
-        state.online.serve_socket(room_id, query.token, socket).await;
+        state
+            .online
+            .serve_socket(room_id, query.token, socket)
+            .await;
     }))
 }
 
