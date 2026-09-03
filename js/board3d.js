@@ -213,7 +213,7 @@ export function createMarkers() {
   const group = new THREE.Group();
   const moveMt = new THREE.MeshBasicMaterial({ color: 0x7fd4a8, transparent: true, opacity: 0.85, depthWrite: false, depthTest: false });
   const capMt = new THREE.MeshBasicMaterial({ color: 0xff5a4a, transparent: true, opacity: 0.9, depthWrite: false, depthTest: false, side: THREE.DoubleSide });
-  const selMt = new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.9, depthWrite: false, depthTest: false, side: THREE.DoubleSide });
+  const selMt = new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.9, depthWrite: false, depthTest: true, side: THREE.DoubleSide });
   const responseMt = new THREE.MeshBasicMaterial({ color: 0x79e6bd, transparent: true, opacity: 0.92, depthWrite: false, depthTest: false, side: THREE.DoubleSide });
   const lastMt = new THREE.MeshBasicMaterial({ color: 0x8fb8ff, transparent: true, opacity: 0.5, depthWrite: false, depthTest: false, side: THREE.DoubleSide });
   const moveGeo = new THREE.CircleGeometry(0.3, 32);
