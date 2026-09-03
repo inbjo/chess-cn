@@ -22,6 +22,9 @@ const stagingDir = mkdtempSync(join(repoRoot, '.dist-cloudflare-'));
 const staticEntries = [
   'index.html',
   'favicon.svg',
+  'manifest.webmanifest',
+  'sw.js',
+  'icons',
   'css',
   'js',
   'assets',

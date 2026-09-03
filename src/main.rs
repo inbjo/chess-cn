@@ -35,6 +35,12 @@ struct AppState {
 #[folder = "."]
 #[include = "index.html"]
 #[include = "favicon.svg"]
+#[include = "manifest.webmanifest"]
+#[include = "sw.js"]
+#[include = "icons/icon-192.png"]
+#[include = "icons/icon-512.png"]
+#[include = "icons/icon-maskable-512.png"]
+#[include = "icons/apple-touch-icon.png"]
 struct RootAssets;
 
 #[derive(Embed)]
