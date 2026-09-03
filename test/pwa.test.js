@@ -34,5 +34,6 @@ assert.match(sw, /addEventListener\('activate'/, 'Service Worker 缺少 activate
 assert.match(sw, /addEventListener\('fetch'/, 'Service Worker 缺少 fetch 事件');
 assert.match(sw, /godogpaw\.wasm/, 'Service Worker 预缓存列表应包含 WASM 引擎');
 assert.match(sw, /NotoSerifSC\.woff2/, 'Service Worker 预缓存列表应包含本地字体');
+assert.match(sw, /fresh\.ok/, 'Service Worker 导航缓存应仅缓存 2xx 响应');
 
 console.log('ok - PWA 离线支持（manifest、Service Worker、图标）配置完整');

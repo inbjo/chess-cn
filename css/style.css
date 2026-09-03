@@ -23,6 +23,7 @@ html, body {
   inset: 0;
   display: block;
   cursor: grab;
+  touch-action: none;
 }
 #scene:active { cursor: grabbing; }
 

@@ -283,6 +283,8 @@ curl http://127.0.0.1:8000/api/ai/status
 - WebSocket 联机房间、服务端规则校验、断线重连和双方确认重开
 - HTML、CSS、JavaScript、WASM 和模型嵌入 Rust 可执行文件
 - WebGL 上下文与后台页签恢复
+- **PWA 离线支持**：可安装到桌面/主屏幕，断网后仍可进行 godogpaw 人机与本地双人对弈
+- **自托管字体**：Noto Serif SC 子集化后本地提供，不依赖 Google Fonts 服务器
 
 ## 演示
 

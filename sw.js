@@ -4,7 +4,7 @@
 // - 跨源字体等资源：缓存优先，允许 opaque 响应，离线时回退已缓存副本
 // - 安装时预缓存核心资源，激活时清理旧版本缓存
 
-const CACHE_VERSION = 'chess-cn-v1';
+const CACHE_VERSION = 'chess-cn-v2';
 const CORE_CACHE = `${CACHE_VERSION}-core`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const OFFLINE_URL = './';
@@ -97,8 +97,11 @@ self.addEventListener('message', (event) => {
 async function handleNavigation(request) {
   try {
     const fresh = await fetch(request);
-    const cache = await caches.open(RUNTIME_CACHE);
-    cache.put(OFFLINE_URL, fresh.clone()).catch(() => {});
+    // 仅缓存成功的 2xx 响应，避免 4xx/5xx 错误页覆盖离线入口
+    if (fresh.ok) {
+      const cache = await caches.open(RUNTIME_CACHE);
+      await cache.put(OFFLINE_URL, fresh.clone());
+    }
     return fresh;
   } catch (_) {
     const core = await caches.open(CORE_CACHE);
@@ -133,12 +136,13 @@ async function handleSameOriginAsset(request) {
   }
 }
 
-// 跨源资源（Google Fonts 等）：缓存优先，允许 opaque 响应，离线回退。
+// 跨源资源（字体等）：缓存优先，允许 opaque 响应，离线回退。
 async function handleCrossOrigin(request) {
   const cached = await caches.match(request, { ignoreSearch: false });
   if (cached) return cached;
   try {
-    const response = await fetch(request, { mode: 'cors', credentials: 'omit' });
+    // 保留原始 request.mode，避免破坏 no-cors 跨源资源
+    const response = await fetch(request);
     if (response.ok || response.type === 'opaque') {
       const cache = await caches.open(RUNTIME_CACHE);
       await cache.put(request, response.clone());

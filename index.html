@@ -185,7 +185,7 @@
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker
-          .register('sw.js?v=20260903.1', { scope: './' })
+          .register('sw.js?v=20260903.2', { scope: './' })
           .catch((error) => console.warn('Service Worker 注册失败，离线模式不可用', error));
       });
     }
