@@ -9,6 +9,8 @@ assert.match(html, /rel="manifest" href="manifest\.webmanifest"/, 'index.html �
 assert.match(html, /rel="apple-touch-icon" href="icons\/apple-touch-icon\.png"/, 'index.html 缺少 apple-touch-icon');
 assert.match(html, /name="theme-color" content="#6f1713"/, 'index.html 缺少 theme-color');
 assert.match(html, /navigator\.serviceWorker/, 'index.html 未注册 Service Worker');
+assert.doesNotMatch(html, /fonts\.googleapis\.com/, '不应再依赖 Google Fonts 服务器');
+assert.match(html, /css\/fonts\.css/, '应引用本地字体样式表');
 
 // manifest 字段校验
 const manifest = JSON.parse(readFileSync(new URL('manifest.webmanifest', root), 'utf8'));
@@ -31,5 +33,6 @@ assert.match(sw, /addEventListener\('install'/, 'Service Worker 缺少 install �
 assert.match(sw, /addEventListener\('activate'/, 'Service Worker 缺少 activate 事件');
 assert.match(sw, /addEventListener\('fetch'/, 'Service Worker 缺少 fetch 事件');
 assert.match(sw, /godogpaw\.wasm/, 'Service Worker 预缓存列表应包含 WASM 引擎');
+assert.match(sw, /NotoSerifSC\.woff2/, 'Service Worker 预缓存列表应包含本地字体');
 
 console.log('ok - PWA 离线支持（manifest、Service Worker、图标）配置完整');

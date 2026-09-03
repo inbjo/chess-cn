@@ -14,15 +14,19 @@ assert.doesNotMatch(html, /value="pikafish"/);
 // PWA 离线支持：manifest、Service Worker 与图标必须随产物发布
 assert.match(html, /rel="manifest" href="manifest\.webmanifest"/);
 assert.match(html, /navigator\.serviceWorker/);
+assert.doesNotMatch(html, /fonts\.googleapis\.com/);
+assert.match(html, /css\/fonts\.css/);
 
 for (const path of [
   'favicon.svg',
   'manifest.webmanifest',
   'sw.js',
   'css/style.css',
+  'css/fonts.css',
   'js/main.js',
   'js/ai-worker.js',
   'assets/godogpaw.wasm',
+  'assets/fonts/NotoSerifSC.woff2',
   'vendor/three/build/three.module.js',
   'icons/icon-192.png',
   'icons/icon-512.png',

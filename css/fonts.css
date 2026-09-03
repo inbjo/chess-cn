@@ -1,0 +1,9 @@
+/* 本地自托管 Noto Serif SC 可变字体 —— 不依赖 Google Fonts 服务器 */
+@font-face {
+  font-family: "Noto Serif SC";
+  src: url("../assets/fonts/NotoSerifSC.woff2") format("woff2-variations");
+  font-weight: 200 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+2000-206F, U+2E80-2EFF, U+3000-303F, U+3400-4DBF, U+4E00-9FFF, U+FF00-FFEF;
+}

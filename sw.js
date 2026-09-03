@@ -16,6 +16,8 @@ const PRECACHE_URLS = [
   './favicon.svg',
   './manifest.webmanifest',
   './css/style.css',
+  './css/fonts.css',
+  './assets/fonts/NotoSerifSC.woff2',
   './js/main.js',
   './js/rules.js',
   './js/pieces.js',
