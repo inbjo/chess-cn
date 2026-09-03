@@ -230,8 +230,14 @@ impl Pikafish {
             .send(&format!("setoption name Hash value {}", config.hash_mb))
             .await?;
         if let Some(nnue) = &config.nnue {
+            let nnue_path = nnue.display().to_string();
+            if nnue_path.contains(' ') {
+                return Err(EngineError::Spawn(format!(
+                    "NNUE 路径不能包含空格：{nnue_path}"
+                )));
+            }
             engine
-                .send(&format!("setoption name EvalFile value {}", nnue.display()))
+                .send(&format!("setoption name EvalFile value {}", nnue_path))
                 .await?;
         }
         engine.send("isready").await?;

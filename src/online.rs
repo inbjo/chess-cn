@@ -153,6 +153,9 @@ impl OnlineHub {
 
     pub async fn join_room(&self, room_id: &str) -> Result<RoomTicket, OnlineError> {
         let room_id = normalize_room_id(room_id);
+        if room_id.len() != 6 || !room_id.chars().all(|c| c.is_ascii_alphanumeric()) {
+            return Err(OnlineError::RoomNotFound);
+        }
         let room = self.room(&room_id).await?;
         let mut state = room.state.lock().await;
         if state.black.is_some() {
@@ -467,6 +470,11 @@ async fn send_direct(socket: &mut WebSocket, message: &ServerMessage) -> Result<
 
 fn normalize_room_id(value: &str) -> String {
     value.trim().to_ascii_uppercase()
+}
+
+/// 公开的房间编号归一化函数，供 main.rs 在 WebSocket 握手前做同步校验。
+pub fn normalize_room_id_public(value: &str) -> String {
+    normalize_room_id(value)
 }
 
 fn random_code(length: usize) -> String {

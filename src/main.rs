@@ -231,7 +231,6 @@ async fn ai_status(State(state): State<Arc<AppState>>) -> Json<serde_json::Value
     Json(json!({
         "available": state.engines.appears_available(),
         "engine": "Pikafish",
-        "path": state.engines.configured_path(),
     }))
 }
 
@@ -283,13 +282,18 @@ async fn online_socket(
     State(state): State<Arc<AppState>>,
     Path(room_id): Path<String>,
     Query(query): Query<OnlineSocketQuery>,
-) -> impl IntoResponse {
-    websocket.on_upgrade(move |socket| async move {
-        state
-            .online
-            .serve_socket(room_id, query.token, socket)
-            .await;
-    })
+) -> Result<impl IntoResponse, ApiError> {
+    // 在 WebSocket 握手前同步校验房间与 token 格式，避免无效连接升级
+    let room_id = online::normalize_room_id_public(&room_id);
+    if room_id.len() != 6 || !room_id.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return Err(ApiError::bad_request("无效的房间编号"));
+    }
+    if query.token.len() > 128 || !query.token.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return Err(ApiError::bad_request("无效的房间凭证"));
+    }
+    Ok(websocket.on_upgrade(move |socket| async move {
+        state.online.serve_socket(room_id, query.token, socket).await;
+    }))
 }
 
 async fn index() -> Response {
@@ -315,7 +319,7 @@ fn embedded_response<T: Embed>(path: &str) -> Response {
         return StatusCode::NOT_FOUND.into_response();
     };
     let mime = mime_guess::from_path(path).first_or_octet_stream();
-    Response::builder()
+    let mut builder = Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, mime.as_ref())
         .header(
@@ -325,7 +329,9 @@ fn embedded_response<T: Embed>(path: &str) -> Response {
             } else {
                 "public, max-age=3600"
             },
-        )
+        );
+    builder = apply_security_headers(builder);
+    builder
         .body(Body::from(file.data))
         .expect("valid embedded response")
 }
@@ -386,6 +392,19 @@ impl From<OnlineError> for ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        (self.status, Json(json!({ "error": self.message }))).into_response()
+        let response = (self.status, Json(json!({ "error": self.message }))).into_response();
+        let builder = apply_security_headers(Response::builder());
+        builder
+            .status(response.status())
+            .body(response.into_body())
+            .expect("valid error response")
     }
+}
+
+/// 为响应添加安全相关的 HTTP 头，防止点击劫持、MIME 嗅探和信息泄露。
+fn apply_security_headers(builder: axum::http::response::Builder) -> axum::http::response::Builder {
+    builder
+        .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
+        .header(header::X_FRAME_OPTIONS, "DENY")
+        .header(header::REFERRER_POLICY, "strict-origin-when-cross-origin")
 }
