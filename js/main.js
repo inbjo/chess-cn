@@ -216,6 +216,7 @@ let onlineReconnectTimer = null;
 let onlineMovePending = false;
 const onlineEventQueue = [];
 const tweens = [];
+const tweenedMeshes = new Set();
 const generalCinematicEl = requiredElement('generalCinematic');
 const cinematicGlyph = requiredElement('cinematicGlyph');
 let generalCinematic = null;
@@ -1256,6 +1257,21 @@ function doMove(piece, to) {
   const effectColor = ATTACK_COLOR[piece.color][piece.type];
   faceDirection(mesh, dir);
 
+  // Tripo 生成模型没有 rig（武器/炮管等骨骼），攻击动画的武器部分会静默跳过。
+  // 为其补充一个整体前冲作为视觉补偿，避免吃子时模型完全静止。
+  const hasRig = mesh.userData.rig && Object.keys(mesh.userData.rig).length > 0;
+  if (!hasRig) {
+    const lungePos = dstV.clone().addScaledVector(dir, -0.5);
+    animateMove(mesh, lungePos, 0.2, () => {
+      fx.slash(capPos, effectColor || 0xfff0c0);
+      flingPiece(capMesh, dir, 'slash', () => {
+        setAttackPhase(piece.type, 'advance');
+        animateMove(mesh, dstV, 0.3, finish, 0.3);
+      });
+    }, 0.18, 0.1);
+    return;
+  }
+
   if (piece.type === 'cannon') {
     // 炮: 瞄准蓄势 -> 后座点火 -> 炮弹命中 -> 敌子消散 -> 炮再推进落位
     const rig = mesh.userData.rig || {};
@@ -1574,6 +1590,12 @@ motionModeSelect.addEventListener('change', () => applyMotionMode(motionModeSele
 reducedMotionMedia.addEventListener?.('change', event => {
   if (!hasSavedMotionMode) applyMotionMode(event.matches ? 'simple' : 'full', false, false);
 });
+// 旧版 Safari 的 MediaQueryList 不支持 addEventListener，回退到 addListener
+if (!reducedMotionMedia.addEventListener && reducedMotionMedia.addListener) {
+  reducedMotionMedia.addListener(event => {
+    if (!hasSavedMotionMode) applyMotionMode(event.matches ? 'simple' : 'full', false, false);
+  });
+}
 aiEngineSelect.addEventListener('change', async () => {
   const supportedEngines = staticOnlyDeployment ? ['godogpaw'] : ['godogpaw', 'pikafish'];
   if (!supportedEngines.includes(aiEngineSelect.value)) return;
@@ -1582,7 +1604,10 @@ aiEngineSelect.addEventListener('change', async () => {
   aiEngine = aiEngineSelect.value;
   refreshBattleControls();
   battleHint(`人机引擎切换为：${aiEngineName()}`);
-  await probeAi();
+  aiEngineSelect.disabled = true;
+  aiDifficultySelect.disabled = true;
+  try { await probeAi(); }
+  finally { aiEngineSelect.disabled = false; aiDifficultySelect.disabled = false; }
 });
 aiDifficultySelect.addEventListener('change', async () => {
   if (!Object.hasOwn(difficultyNames, aiDifficultySelect.value)) return;
@@ -1590,7 +1615,10 @@ aiDifficultySelect.addEventListener('change', async () => {
   aiDifficulty = aiDifficultySelect.value;
   refreshBattleControls();
   battleHint(`敌军谋略调整为：${difficultyNames[aiDifficulty]}`);
-  await probeAi();
+  aiEngineSelect.disabled = true;
+  aiDifficultySelect.disabled = true;
+  try { await probeAi(); }
+  finally { aiEngineSelect.disabled = false; aiDifficultySelect.disabled = false; }
 });
 document.getElementById('btnUndo').addEventListener('click', () => {
   if (actionPhase !== 'idle' || tweens.length) return;
@@ -1717,6 +1745,7 @@ function updateScene(dt, renderFrame = true) {
   for (let i = tweens.length - 1; i >= 0; i--) {
     const tw = tweens[i];
     if (tw.delay > 0) { tw.delay -= dt; continue; }
+    if (tw.mesh) tweenedMeshes.add(tw.mesh);
     tw.t += dt;
     const p = Math.min(tw.t / tw.dur, 1);
     const e = easeInOut(p);
@@ -1735,10 +1764,12 @@ function updateScene(dt, renderFrame = true) {
     } catch (err) {
       console.warn('tween update error', err);
       tweens.splice(i, 1);
+      if (tw.mesh) tweenedMeshes.delete(tw.mesh);
       continue;
     }
     if (p >= 1) {
       tweens.splice(i, 1);
+      if (tw.mesh) tweenedMeshes.delete(tw.mesh);
       try { tw.onDone && tw.onDone(); }
       catch (err) { console.warn('tween onDone error', err); }
     }
@@ -1751,7 +1782,7 @@ function updateScene(dt, renderFrame = true) {
   for (const mesh of piecesGroup.children) {
     const badge = mesh.userData.identityBadge;
     if (badge) badge.visible = displayMode === 'battle' && !generalCinematic;
-    if (tweens.some(tw => tw.mesh === mesh)) continue;
+    if (tweenedMeshes.has(mesh)) continue;
     const fig = mesh.userData.figure;
     if (fig) {
       fig.rotation.z = ambientMotion ? Math.sin(time * 1.3 + mesh.userData.phase) * 0.018 : 0;

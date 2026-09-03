@@ -186,6 +186,19 @@
       window.addEventListener('load', () => {
         navigator.serviceWorker
           .register('sw.js?v=20260903.2', { scope: './' })
+          .then((reg) => {
+            // 检测到新版本后提示用户刷新，避免长期使用过期缓存
+            reg.addEventListener('updatefound', () => {
+              const newWorker = reg.installing;
+              if (!newWorker) return;
+              newWorker.addEventListener('statechange', () => {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  const hint = document.getElementById('hint');
+                  if (hint) hint.textContent = '战场已更新，刷新页面以加载新版本';
+                }
+              });
+            });
+          })
           .catch((error) => console.warn('Service Worker 注册失败，离线模式不可用', error));
       });
     }
