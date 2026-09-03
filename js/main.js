@@ -216,8 +216,8 @@ let onlineReconnectTimer = null;
 let onlineMovePending = false;
 const onlineEventQueue = [];
 const tweens = [];
-const generalCinematicEl = document.getElementById('generalCinematic');
-const cinematicGlyph = document.getElementById('cinematicGlyph');
+const generalCinematicEl = requiredElement('generalCinematic');
+const cinematicGlyph = requiredElement('cinematicGlyph');
 let generalCinematic = null;
 let flipped = false;
 let cameraFlipVersion = 0;
@@ -330,9 +330,9 @@ function resetGame() {
 }
 
 // ---------- HUD ----------
-const turnBadge = document.getElementById('turnBadge');
-const checkBanner = document.getElementById('checkBanner');
-const hint = document.getElementById('hint');
+const turnBadge = requiredElement('turnBadge');
+const checkBanner = requiredElement('checkBanner');
+const hint = requiredElement('hint');
 
 function boardInteractionHint() {
   return displayMode === 'classic'
@@ -536,14 +536,14 @@ function stateFromMoves(moves) {
   return next;
 }
 
-const onlineDialog = document.getElementById('onlineDialog');
-const onlineMessage = document.getElementById('onlineMessage');
-const roomCodeInput = document.getElementById('roomCode');
-const roomTicket = document.getElementById('roomTicket');
-const activeRoomCode = document.getElementById('activeRoomCode');
-const roomSeat = document.getElementById('roomSeat');
-const btnCreateRoom = document.getElementById('btnCreateRoom');
-const joinRoomForm = document.getElementById('joinRoomForm');
+const onlineDialog = requiredElement('onlineDialog');
+const onlineMessage = requiredElement('onlineMessage');
+const roomCodeInput = requiredElement('roomCode');
+const roomTicket = requiredElement('roomTicket');
+const activeRoomCode = requiredElement('activeRoomCode');
+const roomSeat = requiredElement('roomSeat');
+const btnCreateRoom = requiredElement('btnCreateRoom');
+const joinRoomForm = requiredElement('joinRoomForm');
 let roomRequestController = null;
 
 function showOnlineDialog() {
@@ -617,7 +617,8 @@ function connectOnline(ticket) {
     socket: null,
     reconnectAttempt: 0,
   };
-  sessionStorage.setItem(`chess-room-${online.roomId}`, JSON.stringify(ticket));
+  try { sessionStorage.setItem(`chess-room-${online.roomId}`, JSON.stringify(ticket)); }
+  catch (_) { /* Safari 隐私模式或配额超限时静默忽略 */ }
   history.replaceState(null, '', buildRoomInviteUrl(location, online.roomId));
   installGameState(R.createInitialState());
   showRoomTicket();
@@ -663,6 +664,10 @@ function openOnlineSocket() {
     online.connected = false;
     onlineMovePending = false;
     refreshBattleControls();
+    if (online.reconnectAttempt >= 10) {
+      battleHint('联机多次重连失败，请检查网络后重开房间', true);
+      return;
+    }
     battleHint('联机中断，正在重新连接……', true);
     const delay = Math.min(8000, 700 * (2 ** online.reconnectAttempt++));
     onlineReconnectTimer = setTimeout(openOnlineSocket, delay);
@@ -1016,6 +1021,7 @@ function startGeneralCinematic(attacker, target, color) {
     savedPosition: camera.position.clone(),
     savedTarget: controls.target.clone(),
     savedFov: camera.fov,
+    isPerspective: camera.isPerspectiveCamera,
     savedExposure: renderer.toneMappingExposure,
     controlsEnabled: controls.enabled,
     onDone: null,
@@ -1047,7 +1053,7 @@ function endGeneralCinematic(onDone) {
   generalCinematic.returnTime = 0;
   generalCinematic.returnPosition = camera.position.clone();
   generalCinematic.returnTarget = generalCinematic.focus.clone();
-  generalCinematic.returnFov = camera.fov;
+  generalCinematic.returnFov = generalCinematic.isPerspective ? camera.fov : undefined;
   generalCinematic.returnExposure = renderer.toneMappingExposure;
   generalCinematic.onDone = onDone;
   generalCinematicEl.classList.remove('impact');
@@ -1056,8 +1062,10 @@ function endGeneralCinematic(onDone) {
 function cancelGeneralCinematic() {
   if (!generalCinematic) return;
   camera.position.copy(generalCinematic.savedPosition);
-  camera.fov = generalCinematic.savedFov;
-  camera.updateProjectionMatrix();
+  if (generalCinematic.isPerspective) {
+    camera.fov = generalCinematic.savedFov;
+    camera.updateProjectionMatrix();
+  }
   renderer.toneMappingExposure = generalCinematic.savedExposure;
   controls.target.copy(generalCinematic.savedTarget);
   controls.enabled = generalCinematic.controlsEnabled;
@@ -1077,16 +1085,20 @@ function updateGeneralCinematic(dt) {
     const e = easeInOut(p);
     camera.position.lerpVectors(cinematic.returnPosition, cinematic.savedPosition, e);
     const lookAt = cinematic.returnTarget.clone().lerp(cinematic.savedTarget, e);
-    camera.fov = THREE.MathUtils.lerp(cinematic.returnFov, cinematic.savedFov, e);
+    if (cinematic.isPerspective) {
+      camera.fov = THREE.MathUtils.lerp(cinematic.returnFov, cinematic.savedFov, e);
+      camera.updateProjectionMatrix();
+    }
     renderer.toneMappingExposure = THREE.MathUtils.lerp(cinematic.returnExposure, cinematic.savedExposure, e);
-    camera.updateProjectionMatrix();
     camera.lookAt(lookAt);
     if (p < 1) return;
 
     const done = cinematic.onDone;
     camera.position.copy(cinematic.savedPosition);
-    camera.fov = cinematic.savedFov;
-    camera.updateProjectionMatrix();
+    if (cinematic.isPerspective) {
+      camera.fov = cinematic.savedFov;
+      camera.updateProjectionMatrix();
+    }
     renderer.toneMappingExposure = cinematic.savedExposure;
     controls.target.copy(cinematic.savedTarget);
     controls.enabled = cinematic.controlsEnabled;
@@ -1136,9 +1148,11 @@ function updateGeneralCinematic(dt) {
   }
 
   camera.position.copy(cameraPosition);
-  const closeupFov = THREE.MathUtils.lerp(32, 27, impactPush);
-  camera.fov = THREE.MathUtils.lerp(cinematic.savedFov, closeupFov, easeInOut(intro));
-  camera.updateProjectionMatrix();
+  if (cinematic.isPerspective) {
+    const closeupFov = THREE.MathUtils.lerp(32, 27, impactPush);
+    camera.fov = THREE.MathUtils.lerp(cinematic.savedFov, closeupFov, easeInOut(intro));
+    camera.updateProjectionMatrix();
+  }
   camera.lookAt(cinematic.focus);
   const flash = cinematic.impactTime >= 0 ? Math.max(0, 1 - cinematic.impactTime / 0.22) : 0;
   renderer.toneMappingExposure = cinematic.savedExposure * (1 + 0.13 * intro + 0.22 * flash);
@@ -1593,12 +1607,14 @@ document.getElementById('btnUndo').addEventListener('click', () => {
     if (!h) break;
     undone = true;
     const mesh = meshById.get(h.pieceId);
+    if (!mesh) continue;
     restoreFacing(mesh);
     applyPiecePresentation(mesh);
     const back = squareToWorld(h.from.row, h.from.col);
     mesh.position.set(back.x, back.y, back.z);
     if (h.captured) {
       const cm = meshById.get(h.captured.id);
+      if (!cm) continue;
       setOpacity(cm, 1);
       cm.rotation.set(0, h.captured.color === R.RED ? Math.PI : 0, 0); // 复位击飞翻滚
       applyPiecePresentation(cm);
@@ -1704,20 +1720,27 @@ function updateScene(dt, renderFrame = true) {
     tw.t += dt;
     const p = Math.min(tw.t / tw.dur, 1);
     const e = easeInOut(p);
-    if (tw.update) {
-      tw.update(e, p);
-    } else if (tw.to) {
-      tw.mesh.position.lerpVectors(tw.from, tw.to, e);
-      if (tw.arc) tw.mesh.position.y += Math.sin(Math.PI * e) * tw.arc;
-    }
-    if (tw.fade) setOpacity(tw.mesh, 1 - p);
-    if (tw.spin) {
-      tw.mesh.rotation.x += dt * 6;
-      tw.mesh.rotation.z += dt * 4.5;
+    try {
+      if (tw.update) {
+        tw.update(e, p);
+      } else if (tw.to) {
+        tw.mesh.position.lerpVectors(tw.from, tw.to, e);
+        if (tw.arc) tw.mesh.position.y += Math.sin(Math.PI * e) * tw.arc;
+      }
+      if (tw.fade) setOpacity(tw.mesh, 1 - p);
+      if (tw.spin) {
+        tw.mesh.rotation.x += dt * 6;
+        tw.mesh.rotation.z += dt * 4.5;
+      }
+    } catch (err) {
+      console.warn('tween update error', err);
+      tweens.splice(i, 1);
+      continue;
     }
     if (p >= 1) {
       tweens.splice(i, 1);
-      tw.onDone && tw.onDone();
+      try { tw.onDone && tw.onDone(); }
+      catch (err) { console.warn('tween onDone error', err); }
     }
   }
 
@@ -1787,7 +1810,8 @@ function updateScene(dt, renderFrame = true) {
   }
 
   controls.update();
-  updateGeneralCinematic(dt);
+  try { updateGeneralCinematic(dt); }
+  catch (err) { console.warn('cinematic update error', err); cancelGeneralCinematic(); }
   if (shadowsWereAnimating && (shadowUpdateFrame++ % 2 === 0 || tweens.length === 0)) {
     renderer.shadowMap.needsUpdate = true;
   }
@@ -1829,16 +1853,20 @@ function animate(now = performance.now()) {
   }
 }
 
+let resizeTimer = 0;
 window.addEventListener('resize', () => {
-  perspectiveCamera.aspect = window.innerWidth / window.innerHeight;
-  perspectiveCamera.updateProjectionMatrix();
-  resizeClassicCamera();
-  if (displayMode === 'classic') {
-    orientClassicCamera();
-    controls.target.set(0, 0.5, classicCamera.position.z);
-  }
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, window.innerWidth < 760 ? 1.35 : 1.75));
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    perspectiveCamera.aspect = window.innerWidth / window.innerHeight;
+    perspectiveCamera.updateProjectionMatrix();
+    resizeClassicCamera();
+    if (displayMode === 'classic') {
+      orientClassicCamera();
+      controls.target.set(0, 0.5, classicCamera.position.z);
+    }
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, window.innerWidth < 760 ? 1.35 : 1.75));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  }, 150);
 });
 
 window.addEventListener('keydown', event => {
