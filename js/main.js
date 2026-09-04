@@ -2,9 +2,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import * as R from './rules.js?v=20260901.3';
-import { createPieceMesh, preloadPieceGlyphFont } from './pieces.js?v=20260902.5';
+import { createPieceMesh, preloadPieceGlyphFont } from './pieces.js?v=20260904.1';
 import { preloadPieceModels } from './model-assets.js?v=20260901.3';
-import { BOARD_H, BOARD_W, CELL, createBoard, createMarkers, createEnvironment, squareToWorld } from './board3d.js?v=20260902.3';
+import { BOARD_H, BOARD_W, CELL, createBoard, createMarkers, createEnvironment, squareToWorld } from './board3d.js?v=20260904.2';
 import { FX } from './fx.js?v=20260902.2';
 import { probeWasmAi, resetWasmAi, searchWasmAi, uciToMove } from './ai-engine.js?v=20260902.1';
 import { buildRoomInviteUrl, copyTextToClipboard } from './online-utils.js?v=20260901.4';
@@ -47,7 +47,7 @@ try {
   window.__showBootError?.(`无法创建 WebGL 战场：${error.message}`);
   throw error;
 }
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, window.innerWidth < 760 ? 1.35 : 1.75));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.shadowMap.enabled = true;
@@ -223,6 +223,14 @@ let generalCinematic = null;
 let flipped = false;
 let cameraFlipVersion = 0;
 
+// ---------- 军师献策（提示） ----------
+const HINT_DELAY_MS = 30000;
+const hintButton = requiredElement('btnHint');
+let hintShowTimer = null;
+let hintRequestVersion = 0;
+let hintThinking = false;
+let hintMove = null; // { piece, to } 当前展示的推荐走法
+
 function effectiveMotionMode() {
   return displayMode === 'classic' && motionMode === 'full' ? 'simple' : motionMode;
 }
@@ -324,6 +332,8 @@ function installGameState(nextState) {
   document.getElementById('overlay').classList.remove('show');
   refreshHUD();
   refreshBattleControls();
+  resetHintState();
+  startHintTimer();
 }
 
 function resetGame() {
@@ -843,6 +853,120 @@ async function maybeRequestAiMove() {
   }
 }
 
+// ---------- 军师献策（提示） ----------
+function hintTimerActive() {
+  return gameMode === 'ai'
+    && !DEMO_TYPES.has(demoType)
+    && state.turn === R.RED
+    && !gameOver
+    && actionPhase === 'idle'
+    && !aiThinking
+    && !hintThinking;
+}
+
+function startHintTimer() {
+  clearHintTimer();
+  if (!hintTimerActive()) return;
+  hintShowTimer = setTimeout(() => {
+    hintShowTimer = null;
+    if (hintTimerActive()) {
+      hintButton.hidden = false;
+      hintButton.classList.remove('thinking');
+    }
+  }, HINT_DELAY_MS);
+}
+
+function clearHintTimer() {
+  if (hintShowTimer) { clearTimeout(hintShowTimer); hintShowTimer = null; }
+}
+
+function hideHintButton() {
+  hintButton.hidden = true;
+  hintButton.classList.remove('thinking');
+}
+
+function clearHintMove() {
+  if (!hintMove) return;
+  hintMove = null;
+  // 仅清除提示标记，保留正常选中标记
+  if (selected) {
+    markers.clear();
+    if (state.lastMove) markers.lastMoveMarks(state.lastMove.from, state.lastMove.to);
+    markers.selectRing(selected.row, selected.col);
+    markers.showMoves(selectedMoves, state.pieces, R.pieceAt);
+  } else {
+    markers.clear();
+    if (state.lastMove) markers.lastMoveMarks(state.lastMove.from, state.lastMove.to);
+  }
+}
+
+function resetHintState() {
+  clearHintTimer();
+  hideHintButton();
+  hintRequestVersion++;
+  hintThinking = false;
+  clearHintMove();
+}
+
+async function computeHintMove() {
+  if (!hintTimerActive() && !hintThinking) return;
+  const requestVersion = ++hintRequestVersion;
+  const engine = aiEngine;
+  const moves = state.history.map(moveToUci);
+  hintThinking = true;
+  hintButton.classList.add('thinking');
+  hintButton.textContent = '军师推演中…';
+  battleHint('军师正在推演最佳走法……');
+  try {
+    let result;
+    // 提示始终使用大师难度，给出当前局面下最强推荐
+    if (engine === 'pikafish') {
+      const response = await fetch('/api/ai/move', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ moves, difficulty: 'master' }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || `AI 请求失败（${response.status}）`);
+      result = { from: payload.from, to: payload.to };
+    } else {
+      result = uciToMove(await searchWasmAi(moves, 'master'));
+    }
+    if (requestVersion !== hintRequestVersion) return;
+    const { from, to } = result;
+    const piece = state.pieces.find(p => p.row === from.row && p.col === from.col && p.color === R.RED);
+    const legal = piece && R.legalMoves(state.pieces, piece)
+      .some(move => move.row === to.row && move.col === to.col);
+    if (!piece || !legal) throw new Error('军师返回的棋步与当前局面不一致');
+    hintThinking = false;
+    hintButton.classList.remove('thinking');
+    hintButton.textContent = '军师献策';
+    hideHintButton();
+    // 选中推荐棋子并展示全部合法走法，再用金色标记突出推荐落点
+    selected = piece;
+    selectedMoves = R.legalMoves(state.pieces, piece);
+    hintMove = { piece, to };
+    markers.clear();
+    if (state.lastMove) markers.lastMoveMarks(state.lastMove.from, state.lastMove.to);
+    markers.selectRing(piece.row, piece.col);
+    markers.showMoves(selectedMoves, state.pieces, R.pieceAt);
+    markers.hintTarget(to.row, to.col, to);
+    sndSelect();
+    const glyph = R.GLYPH[piece.color][piece.type];
+    battleHint(`军师献策 · ${glyph}宜走至金色标记处，点击落子；亦可另选他处`);
+  } catch (error) {
+    if (requestVersion !== hintRequestVersion) return;
+    hintThinking = false;
+    hintButton.classList.remove('thinking');
+    hintButton.textContent = '军师献策';
+    battleHint(error.message || '军师暂时无法献策', true);
+    // 出错时重新开始计时，给玩家再次尝试的机会
+    startHintTimer();
+  }
+}
+
+hintButton.addEventListener('click', () => void computeHintMove());
+
 function missing(color, present) {
   const init = { general: 1, advisor: 2, elephant: 2, horse: 2, chariot: 2, cannon: 2, soldier: 5 };
   for (const p of present) init[p.type]--;
@@ -1188,6 +1312,9 @@ function doMove(piece, to) {
   selected = null;
   selectedMoves = [];
   markers.clear();
+  clearHintTimer();
+  hideHintButton();
+  clearHintMove();
 
   const dst = squareToWorld(to.row, to.col);
   const dstV = new THREE.Vector3(dst.x, dst.y, dst.z);
@@ -1212,6 +1339,7 @@ function doMove(piece, to) {
       if (isHumanTurn()) showCheckResponses();
     }
     if (!status.over) maybeRequestAiMove();
+    if (!status.over) startHintTimer();
   };
 
   const activeMotion = effectiveMotionMode();
@@ -1485,6 +1613,7 @@ renderer.domElement.addEventListener('pointerup', ev => {
     if (piece && piece.color === state.turn && isHumanTurn()) {
       selected = piece;
       selectedMoves = R.legalMoves(state.pieces, piece);
+      hintMove = null;
       markers.clear();
       if (state.lastMove) markers.lastMoveMarks(state.lastMove.from, state.lastMove.to);
       markers.selectRing(piece.row, piece.col);
@@ -1513,6 +1642,8 @@ renderer.domElement.addEventListener('pointerup', ev => {
   }
   if (selected) {
     selected = null;
+    selectedMoves = [];
+    hintMove = null;
     markers.clear();
     if (state.lastMove) markers.lastMoveMarks(state.lastMove.from, state.lastMove.to);
     if (isHumanTurn() && R.isInCheck(state.pieces, state.turn)) showCheckResponses();
@@ -1606,8 +1737,13 @@ aiEngineSelect.addEventListener('change', async () => {
   battleHint(`人机引擎切换为：${aiEngineName()}`);
   aiEngineSelect.disabled = true;
   aiDifficultySelect.disabled = true;
+  resetHintState();
   try { await probeAi(); }
-  finally { aiEngineSelect.disabled = false; aiDifficultySelect.disabled = false; }
+  finally {
+    aiEngineSelect.disabled = false;
+    aiDifficultySelect.disabled = false;
+    startHintTimer();
+  }
 });
 aiDifficultySelect.addEventListener('change', async () => {
   if (!Object.hasOwn(difficultyNames, aiDifficultySelect.value)) return;
@@ -1617,8 +1753,13 @@ aiDifficultySelect.addEventListener('change', async () => {
   battleHint(`敌军谋略调整为：${difficultyNames[aiDifficulty]}`);
   aiEngineSelect.disabled = true;
   aiDifficultySelect.disabled = true;
+  resetHintState();
   try { await probeAi(); }
-  finally { aiEngineSelect.disabled = false; aiDifficultySelect.disabled = false; }
+  finally {
+    aiEngineSelect.disabled = false;
+    aiDifficultySelect.disabled = false;
+    startHintTimer();
+  }
 });
 document.getElementById('btnUndo').addEventListener('click', () => {
   if (actionPhase !== 'idle' || tweens.length) return;
@@ -1654,10 +1795,13 @@ document.getElementById('btnUndo').addEventListener('click', () => {
   }
   if (!undone) return;
   selected = null;
+  selectedMoves = [];
   actionPhase = 'idle';
   markers.clear();
   if (state.lastMove) markers.lastMoveMarks(state.lastMove.from, state.lastMove.to);
   refreshHUD();
+  resetHintState();
+  startHintTimer();
 });
 
 function setCameraForSide(color) {
@@ -1778,6 +1922,16 @@ function updateScene(dt, renderFrame = true) {
   // 战斗特效仅在完整动效中运行。
   if (effectiveMotionMode() === 'full') fx.update(dt);
 
+  // 军师献策标记脉动
+  if (hintMove) {
+    const pulse = 1 + Math.sin(time * 4.5) * 0.08;
+    for (const child of markers.group.children) {
+      if (child.userData.isHintTarget) {
+        child.scale.setScalar(pulse);
+      }
+    }
+  }
+
   // 待机呼吸 + 选中浮动
   for (const mesh of piecesGroup.children) {
     const badge = mesh.userData.identityBadge;
@@ -1895,7 +2049,7 @@ window.addEventListener('resize', () => {
       orientClassicCamera();
       controls.target.set(0, 0.5, classicCamera.position.z);
     }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, window.innerWidth < 760 ? 1.35 : 1.75));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(window.innerWidth, window.innerHeight);
   }, 150);
 });
@@ -1922,6 +2076,11 @@ window.render_game_to_text = () => JSON.stringify({
   aiEngine,
   aiDifficulty,
   aiThinking,
+  hint: {
+    buttonVisible: !hintButton.hidden,
+    thinking: hintThinking,
+    move: hintMove ? { from: { row: hintMove.piece.row, col: hintMove.piece.col }, to: { row: hintMove.to.row, col: hintMove.to.col } } : null,
+  },
   online: online ? {
     roomId: online.roomId,
     color: online.color,
@@ -1991,6 +2150,7 @@ applyMotionMode(motionMode, false, false);
 refreshHUD();
 refreshBattleControls();
 animate();
+startHintTimer();
 
 if (!DEMO_TYPES.has(demoType)) {
   const invitedRoom = pageParams.get('room')?.trim().toUpperCase();

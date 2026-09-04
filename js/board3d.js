@@ -144,7 +144,7 @@ function boardTexture() {
 
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 8;
+  tex.anisotropy = 16;
   return tex;
 }
 
@@ -216,13 +216,17 @@ export function createMarkers() {
   const selMt = new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.9, depthWrite: false, depthTest: true, side: THREE.DoubleSide });
   const responseMt = new THREE.MeshBasicMaterial({ color: 0x79e6bd, transparent: true, opacity: 0.92, depthWrite: false, depthTest: false, side: THREE.DoubleSide });
   const lastMt = new THREE.MeshBasicMaterial({ color: 0x8fb8ff, transparent: true, opacity: 0.5, depthWrite: false, depthTest: false, side: THREE.DoubleSide });
+  const hintMt = new THREE.MeshBasicMaterial({ color: 0xf0c978, transparent: true, opacity: 0.95, depthWrite: false, depthTest: false, side: THREE.DoubleSide });
+  const hintFillMt = new THREE.MeshBasicMaterial({ color: 0xf0c978, transparent: true, opacity: 0.18, depthWrite: false, depthTest: false, side: THREE.DoubleSide });
   const moveGeo = new THREE.CircleGeometry(0.3, 32);
   const capGeo = new THREE.RingGeometry(1.2, 1.38, 36);
   const selectGeo = new THREE.RingGeometry(1.24, 1.38, 36);
   const responseGeo = new THREE.RingGeometry(1.42, 1.57, 36);
   const lastGeo = new THREE.RingGeometry(1.18, 1.3, 36);
+  const hintGeo = new THREE.RingGeometry(1.46, 1.66, 36);
+  const hintFillGeo = new THREE.CircleGeometry(1.42, 36);
   const warmup = new THREE.Group();
-  for (const [geo, material] of [[moveGeo, moveMt], [capGeo, capMt], [selectGeo, selMt], [responseGeo, responseMt], [lastGeo, lastMt]]) {
+  for (const [geo, material] of [[moveGeo, moveMt], [capGeo, capMt], [selectGeo, selMt], [responseGeo, responseMt], [lastGeo, lastMt], [hintGeo, hintMt], [hintFillGeo, hintFillMt]]) {
     const mesh = new THREE.Mesh(geo, material);
     mesh.rotation.x = -Math.PI / 2;
     mesh.scale.setScalar(0.001);
@@ -283,6 +287,22 @@ export function createMarkers() {
         group.add(ring);
       }
     },
+    hintTarget(row, col, move) {
+      const { x, z } = squareToWorld(row, col);
+      const fill = new THREE.Mesh(hintFillGeo, hintFillMt);
+      fill.rotation.x = -Math.PI / 2;
+      fill.position.set(x, TOP_Y + 0.055, z);
+      fill.renderOrder = 935;
+      fill.userData.isHintTarget = true;
+      group.add(fill);
+      const ring = new THREE.Mesh(hintGeo, hintMt);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(x, TOP_Y + 0.06, z);
+      ring.renderOrder = 940;
+      ring.userData.isHintTarget = true;
+      ring.userData.moveTo = move;
+      group.add(ring);
+    },
   };
 }
 
@@ -331,13 +351,15 @@ function groundTexture() {
   }
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 16;
   return tex;
 }
 
 function bannerTexture(char, field, ink) {
   const c = document.createElement('canvas');
-  c.width = 256; c.height = 168;
+  c.width = 512; c.height = 336;
   const ctx = c.getContext('2d');
+  ctx.scale(2, 2);
   ctx.fillStyle = field;
   ctx.fillRect(0, 0, 256, 168);
   ctx.strokeStyle = ink;
@@ -352,6 +374,7 @@ function bannerTexture(char, field, ink) {
   ctx.textBaseline = 'middle';
   ctx.fillText(char, 128, 92);
   const tex = new THREE.CanvasTexture(c);
+  tex.anisotropy = 16;
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }

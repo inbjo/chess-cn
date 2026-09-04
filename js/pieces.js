@@ -166,8 +166,9 @@ function glyphTexture(text, bg, ink, ring) {
   const key = `${text}:${bg}:${ink}:${ring}`;
   if (GLYPH_TEXTURE_CACHE.has(key)) return GLYPH_TEXTURE_CACHE.get(key);
   const c = document.createElement('canvas');
-  c.width = c.height = 256;
+  c.width = c.height = 512;
   const ctx = c.getContext('2d');
+  ctx.scale(2, 2);
   const base = ctx.createRadialGradient(105, 85, 8, 128, 128, 180);
   base.addColorStop(0, bg);
   base.addColorStop(0.68, bg);
@@ -195,7 +196,7 @@ function glyphTexture(text, bg, ink, ring) {
   // 棋子需使用覆盖完整繁简字形的同一字体，避免缺字后局部回退造成混排。
   drawPieceGlyph(ctx, text, 148, 136);
   const tex = new THREE.CanvasTexture(c);
-  tex.anisotropy = 4;
+  tex.anisotropy = 16;
   tex.colorSpace = THREE.SRGBColorSpace;
   GLYPH_TEXTURE_CACHE.set(key, tex);
   return tex;
@@ -227,8 +228,9 @@ function identityBadgeTexture(text, color) {
   const key = `${color}:${text}`;
   if (BADGE_TEXTURE_CACHE.has(key)) return BADGE_TEXTURE_CACHE.get(key);
   const c = document.createElement('canvas');
-  c.width = c.height = 256;
+  c.width = c.height = 512;
   const ctx = c.getContext('2d');
+  ctx.scale(2, 2);
   const red = color === 'red';
   const outer = red ? '#ffd16f' : '#c8dcff';
   const inner = red ? '#6f1713' : '#162a45';
@@ -284,6 +286,7 @@ function identityBadgeTexture(text, color) {
   ctx.fill();
 
   const tex = new THREE.CanvasTexture(c);
+  tex.anisotropy = 16;
   tex.colorSpace = THREE.SRGBColorSpace;
   BADGE_TEXTURE_CACHE.set(key, tex);
   return tex;

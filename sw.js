@@ -4,7 +4,7 @@
 // - 跨源字体等资源：缓存优先，允许 opaque 响应，离线时回退已缓存副本
 // - 安装时预缓存核心资源，激活时清理旧版本缓存
 
-const CACHE_VERSION = 'chess-cn-v2';
+const CACHE_VERSION = 'chess-cn-v5';
 const CORE_CACHE = `${CACHE_VERSION}-core`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const OFFLINE_URL = './';

@@ -27,10 +27,10 @@ html, body {
 }
 #scene:active { cursor: grabbing; }
 
-.hud-top, #panel, #hint, .battle-controls, .demo-trigger { transition: opacity 0.18s ease, visibility 0.18s ease; }
+.hud-top, #panel, #hintBar, .battle-controls, .demo-trigger { transition: opacity 0.18s ease, visibility 0.18s ease; }
 body.general-cinematic-active .hud-top,
 body.general-cinematic-active #panel,
-body.general-cinematic-active #hint,
+body.general-cinematic-active #hintBar,
 body.general-cinematic-active .battle-controls,
 body.general-cinematic-active .demo-trigger {
   opacity: 0;
@@ -525,6 +525,7 @@ body.classic-view #scene { cursor: default; }
   opacity: 0;
   pointer-events: none;
   z-index: 20;
+  white-space: nowrap;
   transition: all 0.25s cubic-bezier(0.2, 1.6, 0.4, 1);
 }
 #checkBanner.show {
@@ -643,11 +644,18 @@ body.classic-view #scene { cursor: default; }
 }
 
 /* ---------- 底部提示 ---------- */
-#hint {
+#hintBar {
   position: fixed;
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100vw - 24px);
+  z-index: 10;
+}
+#hint {
   font-size: 13px;
   letter-spacing: 2px;
   color: rgba(238, 224, 191, 0.68);
@@ -655,10 +663,47 @@ body.classic-view #scene { cursor: default; }
   border: 1px solid rgba(201, 162, 90, 0.2);
   border-radius: 999px;
   padding: 8px 22px;
-  z-index: 10;
   pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 #hint.error { color: #ffad99; border-color: rgba(225, 99, 76, 0.46); }
+
+.hint-btn {
+  font-family: var(--font-chinese);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 3px;
+  padding: 8px 18px;
+  color: #1a1208;
+  background: linear-gradient(145deg, #f1ce83, #c9a25a);
+  border: 1px solid #ffdf99;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  box-shadow: 0 4px 18px rgba(201, 162, 90, 0.4);
+  animation: hintPulse 1.8s ease-in-out infinite;
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+.hint-btn:hover { transform: translateY(-2px); filter: brightness(1.12); }
+.hint-btn:active { transform: translateY(0); }
+.hint-btn[hidden] { display: none; }
+.hint-btn.thinking {
+  color: rgba(240, 201, 120, 0.7);
+  background: rgba(20, 13, 8, 0.9);
+  border-color: rgba(201, 162, 90, 0.5);
+  box-shadow: none;
+  animation: none;
+  cursor: wait;
+}
+@keyframes hintPulse {
+  0%, 100% { box-shadow: 0 4px 18px rgba(201, 162, 90, 0.4); }
+  50% { box-shadow: 0 4px 28px rgba(240, 201, 120, 0.7); }
+}
 
 /* ---------- 终局遮罩 ---------- */
 #overlay {
@@ -731,7 +776,10 @@ body.classic-view #scene { cursor: default; }
   .ai-choice { padding: 0 4px; }
   .ai-choice select { min-width: 64px; max-width: 78px; padding: 5px 4px; font-size: 10px; }
   #panel { display: none; }
-  #hint { bottom: 12px; width: calc(100% - 28px); padding: 7px 12px; text-align: center; font-size: 11px; letter-spacing: 1px; }
+  #checkBanner { font-size: 56px; }
+  #hintBar { bottom: 12px; gap: 6px; max-width: calc(100vw - 16px); }
+  #hint { padding: 7px 12px; text-align: center; font-size: 11px; letter-spacing: 1px; }
+  .hint-btn { padding: 7px 12px; font-size: 11px; letter-spacing: 1px; }
   #resultText { font-size: 64px; }
   .cinematic-title { left: 24px; bottom: 72px; gap: 12px; }
   .cinematic-title small { letter-spacing: 0.2em; }

@@ -9,8 +9,8 @@
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="css/fonts.css?v=20260903.1" />
-  <link rel="stylesheet" href="css/style.css?v=20260902.4" />
+  <link rel="stylesheet" href="css/fonts.css?v=20260904.1" />
+  <link rel="stylesheet" href="css/style.css?v=20260904.2" />
   <script type="importmap">
     {
       "imports": {
@@ -159,7 +159,10 @@
   </aside>
 
   <div id="checkBanner">將軍！</div>
-  <div id="hint">点击己方棋子查看可走位置 · 拖拽旋转视角</div>
+  <div id="hintBar" class="hint-bar">
+    <div id="hint">点击己方棋子查看可走位置 · 拖拽旋转视角</div>
+    <button id="btnHint" class="hint-btn" type="button" hidden>军师献策</button>
+  </div>
 
   <div id="generalCinematic" aria-hidden="true">
     <div class="cinematic-vignette"></div>
@@ -179,13 +182,13 @@
     </div>
   </div>
 
-  <script type="module" src="js/main.js?v=20260902.10"></script>
+  <script type="module" src="js/main.js?v=20260904.2"></script>
   <script>
     // 注册 Service Worker 以支持 PWA 离线对弈
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker
-          .register('sw.js?v=20260903.2', { scope: './' })
+          .register('sw.js?v=20260904.3', { scope: './' })
           .then((reg) => {
             // 检测到新版本后提示用户刷新，避免长期使用过期缓存
             reg.addEventListener('updatefound', () => {
